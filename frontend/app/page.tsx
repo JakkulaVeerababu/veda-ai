@@ -8,9 +8,10 @@ import UploadCard from "@/components/UploadCard";
 import FilePreview from "@/components/FilePreview";
 import ProcessingProgress from "@/components/ProcessingProgress";
 import QuestionList from "@/components/QuestionList";
-import AnswerViewer from "@/components/AnswerViewer";
-import { uploadAndProcess, pollUntilComplete } from "@/lib/api";
-import type { ProcessingResponse, ProcessingStatus, UploadedFile } from "@/lib/types";
+import AnswerDebugView from "@/components/AnswerDebugView";
+import ResultsLayout from "@/components/ResultsLayout";
+import { uploadAndProcess, pollUntilComplete, extractQuestions, extractAnswers } from "@/lib/api";
+import type { UploadedFile, ExtractedQuestion, ExtractedAnswer, ProcessingStatus, MappingResponse } from "@/lib/types";
 
 type AppScreen = "upload" | "processing" | "results";
 
@@ -23,9 +24,14 @@ export default function HomePage() {
   const [processingStage, setProcessingStage] = useState("");
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingMessage, setProcessingMessage] = useState("");
-  const [results, setResults] = useState<ProcessingResponse | null>(null);
-  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
+  const [extractedQuestions, setExtractedQuestions] = useState<ExtractedQuestion[] | null>(null);
+  const [extractedAnswers, setExtractedAnswers] = useState<ExtractedAnswer[] | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isExtractingFailed, setIsExtractingFailed] = useState(false);
+  const [failedStep, setFailedStep] = useState<"questions" | "answers" | "mapping" | null>(null);
+
+  const [mappingResponse, setMappingResponse] = useState<MappingResponse | null>(null);
 
   // ── Derived ──
   const bothFilesUploaded = !!questionPaper && !!answerSheet;
@@ -54,7 +60,80 @@ export default function HomePage() {
     });
   }, []);
 
-  // ── Start Mapping ──
+  // ── Phase 3 Extraction ──
+  const runExtraction = async (currentJobId: string) => {
+    setProcessingStage("extracting_questions");
+    setProcessingProgress(40);
+    setProcessingMessage("Extracting questions...");
+    setIsExtractingFailed(false);
+    setFailedStep(null);
+    
+    try {
+      const response = await extractQuestions(currentJobId);
+      if (response && response.questions) {
+        setExtractedQuestions(response.questions);
+        // Automatically start Phase 4
+        await runAnswerExtraction(currentJobId);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Extraction failed";
+      setError(msg);
+      setIsExtractingFailed(true);
+      setFailedStep("questions");
+      setScreen("processing");
+    }
+  };
+
+  // ── Phase 4 Extraction ──
+  const runAnswerExtraction = async (currentJobId: string) => {
+    setProcessingStage("extracting_answers");
+    setProcessingProgress(60);
+    setProcessingMessage("Reading handwritten answers...");
+    setIsExtractingFailed(false);
+    setFailedStep(null);
+    
+    try {
+      const response = await extractAnswers(currentJobId);
+      if (response && response.answers) {
+        setExtractedAnswers(response.answers);
+        // Automatically start Phase 5
+        await runMapAnswers(currentJobId);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Answer extraction failed";
+      setError(msg);
+      setIsExtractingFailed(true);
+      setFailedStep("answers");
+      setScreen("processing");
+    }
+  };
+
+  // ── Phase 5 Mapping ──
+  const runMapAnswers = async (currentJobId: string) => {
+    import("@/lib/api").then(async ({ mapAnswers }) => {
+      setProcessingStage("mapping");
+      setProcessingProgress(85);
+      setProcessingMessage("Mapping answers to questions...");
+      setIsExtractingFailed(false);
+      setFailedStep(null);
+      
+      try {
+        const response = await mapAnswers(currentJobId);
+        if (response && response.mappings) {
+          setMappingResponse(response);
+          setScreen("results");
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Mapping failed";
+        setError(msg);
+        setIsExtractingFailed(true);
+        setFailedStep("mapping");
+        setScreen("processing");
+      }
+    });
+  };
+
+  // ── Start Mapping (Phase 2 -> Phase 3) ──
   const handleStartMapping = async () => {
     if (!questionPaper || !answerSheet) return;
 
@@ -65,13 +144,15 @@ export default function HomePage() {
     setProcessingMessage("Uploading files...");
 
     try {
-      const taskId = await uploadAndProcess(
+      const newJobId = await uploadAndProcess(
         questionPaper.file,
         answerSheet.file
       );
+      setJobId(newJobId);
 
-      const finalStatus = await pollUntilComplete(
-        taskId,
+      // Wait for Phase 2 documents to prepare
+      await pollUntilComplete(
+        newJobId,
         (status: ProcessingStatus) => {
           setProcessingStage(status.stage);
           setProcessingProgress(status.progress);
@@ -79,18 +160,10 @@ export default function HomePage() {
         },
         2000
       );
-
-      if (finalStatus.result) {
-        setResults(finalStatus.result);
-        // Auto-select first answered question
-        const firstAnswered = finalStatus.result.mappings.find(
-          (m) => m.status === "answered"
-        );
-        if (firstAnswered) {
-          setSelectedQuestionId(firstAnswered.questionId);
-        }
-        setScreen("results");
-      }
+      
+      // Move to Phase 3
+      await runExtraction(newJobId);
+      
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Processing failed";
       setError(msg);
@@ -98,23 +171,12 @@ export default function HomePage() {
     }
   };
 
-  // ── Question selection ──
-  const handleSelectQuestion = useCallback((questionId: string) => {
-    setSelectedQuestionId(questionId);
-  }, []);
-
-  // ── Get selected mapping data ──
-  const selectedMapping = results?.mappings.find(
-    (m) => m.questionId === selectedQuestionId
-  );
-  const selectedRegions = selectedMapping?.regions || [];
-  const targetPage = selectedRegions.length > 0 ? selectedRegions[0].page : undefined;
-
   // ── Back to upload ──
   const handleBack = () => {
     setScreen("upload");
-    setResults(null);
-    setSelectedQuestionId(null);
+    setExtractedQuestions(null);
+    setExtractedAnswers(null);
+    setJobId(null);
     setQuestionPaper(null);
     setAnswerSheet(null);
   };
@@ -248,8 +310,8 @@ export default function HomePage() {
                 <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-center">
                   <p className="text-sm text-red-600">{error}</p>
                   <button
-                    onClick={() => setError(null)}
-                    className="mt-2 text-xs text-red-500 underline"
+                     onClick={() => setError(null)}
+                     className="mt-2 text-xs text-red-500 underline"
                   >
                     Dismiss
                   </button>
@@ -263,38 +325,43 @@ export default function HomePage() {
         {/* SCREEN 2: Processing */}
         {/* ═══════════════════════════════════════════ */}
         {screen === "processing" && (
-          <main className="flex-1 overflow-y-auto bg-white rounded-tl-2xl">
+          <main className="flex-1 overflow-y-auto bg-white rounded-tl-2xl flex flex-col relative">
             <ProcessingProgress
               stage={processingStage}
               progress={processingProgress}
               message={processingMessage}
             />
+            {isExtractingFailed && (
+              <div className="absolute inset-x-0 bottom-10 flex flex-col items-center">
+                <p className="text-red-500 font-medium mb-4">{error}</p>
+                <button
+                  onClick={() => {
+                    if (jobId) {
+                      if (failedStep === "questions") runExtraction(jobId);
+                      if (failedStep === "answers") runAnswerExtraction(jobId);
+                    }
+                  }}
+                  className="px-6 py-2 bg-veda-dark text-white rounded-lg hover:bg-veda-gray-800 transition"
+                >
+                  {failedStep === "answers" ? "Retry Answer Extraction" : "Retry Extraction"}
+                </button>
+              </div>
+            )}
           </main>
         )}
 
         {/* ═══════════════════════════════════════════ */}
-        {/* SCREEN 3: Results */}
+        {/* SCREEN 3: Results (Phase 6 Results Layout) */}
         {/* ═══════════════════════════════════════════ */}
-        {screen === "results" && results && (
-          <main className="flex-1 flex overflow-hidden">
-            {/* Left panel: Questions */}
-            <div className="w-[380px] lg:w-[440px] bg-white border-r border-veda-gray-200 flex flex-col shrink-0 overflow-hidden">
-              <QuestionList
-                mappings={results.mappings}
-                selectedQuestionId={selectedQuestionId}
-                onSelectQuestion={handleSelectQuestion}
-              />
-            </div>
-
-            {/* Right panel: Answer Viewer */}
-            <div className="flex-1 overflow-hidden">
-              <AnswerViewer
-                pages={results.answerSheetPages}
-                selectedRegions={selectedRegions}
-                selectedQuestionLabel={selectedQuestionId || undefined}
-                targetPage={targetPage}
-              />
-            </div>
+        {screen === "results" && extractedQuestions && extractedAnswers && mappingResponse && jobId && (
+          <main className="flex-1 flex overflow-hidden relative">
+            <ResultsLayout 
+              jobId={jobId}
+              totalPages={answerSheet?.pages || 1}
+              mappingResponse={mappingResponse}
+              questions={extractedQuestions}
+              answers={extractedAnswers}
+            />
           </main>
         )}
       </div>

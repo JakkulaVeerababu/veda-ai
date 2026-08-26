@@ -5,32 +5,44 @@ import { Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import HighlightOverlay from "./HighlightOverlay";
 import type { BoundingBox } from "@/lib/types";
 
+import { getAnswerPageUrl } from "@/lib/api";
+
 interface AnswerViewerProps {
-  pages: string[]; // base64-encoded page images
+  jobId: string;
+  totalPages: number;
   selectedRegions: BoundingBox[];
   selectedQuestionLabel?: string;
   targetPage?: number; // Page to navigate to (1-indexed)
+  onPageChange?: (page: number) => void;
 }
 
 export default function AnswerViewer({
-  pages,
+  jobId,
+  totalPages,
   selectedRegions,
   selectedQuestionLabel,
   targetPage,
+  onPageChange,
 }: AnswerViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
-  const totalPages = pages.length;
-
   // Navigate to target page when a question is selected
   useEffect(() => {
     if (targetPage && targetPage >= 1 && targetPage <= totalPages) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentPage(targetPage);
     }
   }, [targetPage, totalPages]);
+
+  // Notify parent of page changes
+  useEffect(() => {
+    if (onPageChange) {
+      onPageChange(currentPage);
+    }
+  }, [currentPage, onPageChange]);
 
   // Scroll to highlighted region when page changes
   useEffect(() => {
@@ -39,7 +51,7 @@ export default function AnswerViewer({
         (r) => r.page === currentPage
       );
       if (pageRegions.length > 0) {
-        // Wait for render, then scroll to the first region
+        // Wait for image render, then scroll to the first region
         setTimeout(() => {
           const firstRegion = pageRegions[0];
           if (containerRef.current && pageRef.current) {
@@ -52,7 +64,7 @@ export default function AnswerViewer({
               behavior: "smooth",
             });
           }
-        }, 100);
+        }, 150);
       }
     }
   }, [selectedRegions, currentPage]);
@@ -65,6 +77,10 @@ export default function AnswerViewer({
     setZoom((z) => Math.max(z - 25, 50));
   }, []);
 
+  const handleFitWidth = useCallback(() => {
+    setZoom(100);
+  }, []);
+
   const goToPrevPage = useCallback(() => {
     setCurrentPage((p) => Math.max(p - 1, 1));
   }, []);
@@ -73,7 +89,7 @@ export default function AnswerViewer({
     setCurrentPage((p) => Math.min(p + 1, totalPages));
   }, [totalPages]);
 
-  if (pages.length === 0) {
+  if (totalPages === 0) {
     return (
       <div className="flex items-center justify-center h-full text-veda-gray-400">
         No answer sheet loaded
@@ -81,13 +97,13 @@ export default function AnswerViewer({
     );
   }
 
-  const currentImageB64 = pages[currentPage - 1];
-
   return (
-    <div className="flex flex-col h-full bg-veda-gray-700">
+    <div className="flex flex-col h-full bg-veda-gray-700 overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-veda-gray-800 shrink-0">
-        <h3 className="text-sm font-medium text-white">Answer Sheet</h3>
+        <h3 className="text-sm font-medium text-white">
+          {selectedQuestionLabel ? `Showing Answer for Q${selectedQuestionLabel}` : "Answer Sheet"}
+        </h3>
 
         <div className="flex items-center gap-3">
           {/* Zoom controls */}
@@ -99,7 +115,7 @@ export default function AnswerViewer({
             >
               <Minus size={14} />
             </button>
-            <span className="text-xs text-veda-gray-300 w-10 text-center">
+            <span className="text-xs text-veda-gray-300 w-10 text-center cursor-pointer" onClick={handleFitWidth} title="Fit Width">
               {zoom}%
             </span>
             <button
@@ -139,22 +155,24 @@ export default function AnswerViewer({
       {/* Page viewer */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto custom-scrollbar flex justify-center p-4"
+        className="flex-1 overflow-auto custom-scrollbar flex justify-center p-4 relative"
       >
         <div
           ref={pageRef}
-          className="relative shadow-2xl"
+          className="relative shadow-2xl transition-all duration-200"
           style={{
             width: `${zoom}%`,
-            maxWidth: `${zoom * 8}px`,
+            maxWidth: `${zoom * 10}px`, // Roughly bounded by zoom ratio
+            minWidth: `${zoom * 4}px`
           }}
         >
           {/* Page image */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`data:image/png;base64,${currentImageB64}`}
+            key={`${jobId}-${currentPage}`}
+            src={getAnswerPageUrl(jobId, currentPage)}
             alt={`Answer sheet page ${currentPage}`}
-            className="w-full h-auto block"
+            className="w-full h-auto block object-contain"
             draggable={false}
           />
 

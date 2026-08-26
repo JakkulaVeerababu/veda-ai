@@ -1,151 +1,140 @@
 """
-Answer Extractor Service — Uses Gemini Flash to extract handwritten answers
-with bounding box coordinates from student answer sheet images.
+Answer Extractor Service — Uses Vision AI to extract handwritten answers from answer sheet images.
 """
+import os
 import json
 import base64
+import uuid
 import google.generativeai as genai
-from typing import List, Dict, Any
+from typing import List
+
+from schemas.answers import ExtractedAnswer
+from schemas.assessment import BoundingBox
 
 
-ANSWER_EXTRACTION_PROMPT = """You are an expert at reading handwritten student answer sheets.
-Analyze this answer sheet page and extract ALL handwritten answers.
+ANSWER_EXTRACTION_PROMPT = """You are analyzing handwritten student answer-sheet pages.
+Identify each distinct answer block.
 
-For EACH separate answer region on this page, provide:
-1. "detectedQuestion" — The question number the student wrote (e.g., "Q1", "1", "3(a)", "Ans 5"). 
-   If no question number is visible, use null.
-2. "text" — Full transcription of the handwritten answer text
-3. "boundingBox" — The EXACT region coordinates where the answer is written:
-   - ymin: top edge (0-1000 scale)
-   - xmin: left edge (0-1000 scale)  
-   - ymax: bottom edge (0-1000 scale)
-   - xmax: right edge (0-1000 scale)
-4. "confidence" — How confident you are in reading this answer (0.0 to 1.0)
+Rules:
+1. Detect the written question label if present (e.g. 1, Q1, 3(a)).
+2. Extract the handwritten answer text as accurately as possible. Do not rewrite grammar.
+3. Identify the exact region occupied by the answer.
+4. Return normalized coordinates from 0 to 1 using top-left origin (x, y, width, height).
+5. If an answer continues across pages, return one answer with multiple regions.
+6. Do not reorder answers. Maintain physical writing order.
+7. Do not invent question labels. If there is no label, return null for detectedQuestionLabel.
+8. Do not invent unreadable text. Ignore student metadata, headers, page numbers, and unrelated marks.
+9. If an answer contains a diagram or a table, include its area in the region.
+10. Return strict JSON only. Do not wrap in markdown fences.
 
-CRITICAL RULES:
-- Coordinates must be on a 0-1000 scale (0 = top/left edge, 1000 = bottom/right edge)
-- Each SEPARATE answer should be its own entry
-- If a student writes "Q1." or "1." or "Ans 1" before an answer, extract that as detectedQuestion
-- Include ALL handwritten text, even if poorly written
-- The bounding box should tightly wrap ONLY the answer text, not empty space
-- If there's a diagram or drawing as part of an answer, include it in the bounding box
-
-Return JSON:
+Return a JSON object with this EXACT structure:
 {
   "answers": [
     {
-      "detectedQuestion": "1",
-      "text": "Transcribed handwritten text...",
-      "boundingBox": {
-        "ymin": 50,
-        "xmin": 80,
-        "ymax": 350,
-        "xmax": 920
-      },
-      "confidence": 0.92
+      "rawQuestionLabel": "Q. 3(a)",
+      "detectedQuestionLabel": "3(a)",
+      "text": "CNN is a convolutional neural network...",
+      "confidence": 0.93,
+      "regions": [
+        {
+          "page": 2,
+          "x": 0.12,
+          "y": 0.31,
+          "width": 0.73,
+          "height": 0.21
+        }
+      ]
     }
   ]
 }
 """
 
-
-async def extract_answers(
-    page_images_b64: List[str],
-    model: genai.GenerativeModel
-) -> List[Dict[str, Any]]:
-    """
-    Extract handwritten answers with bounding boxes from all answer sheet pages.
-    
-    Args:
-        page_images_b64: List of base64-encoded PNG images of answer sheet pages
-        model: Configured Gemini model instance
+class AnswerVisionService:
+    def __init__(self):
+        self.api_key = os.getenv("GEMINI_API_KEY", "")
+        self.model_name = os.getenv("ANSWER_EXTRACTION_MODEL", "gemini-3.6-flash")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY is not configured")
+            
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel(self.model_name)
         
-    Returns:
-        List of answer dictionaries with normalized bounding boxes (0-1)
-    """
-    all_answers = []
-    
-    for page_num, img_b64 in enumerate(page_images_b64, start=1):
-        img_bytes = base64.b64decode(img_b64)
+    async def extract_answers(self, page_images_b64: List[str]) -> List[ExtractedAnswer]:
+        """
+        Extract handwritten answers from answer sheet images using Vision AI.
+        """
+        all_raw_answers = []
         
-        parts = [
-            ANSWER_EXTRACTION_PROMPT,
-            f"\nThis is page {page_num} of the answer sheet.",
-            {
+        content = [ANSWER_EXTRACTION_PROMPT]
+        
+        for i, img_b64 in enumerate(page_images_b64):
+            page_num = i + 1
+            content.append(f"--- IMAGE {page_num} = printed page {page_num} ---")
+            content.append({
                 "mime_type": "image/png",
-                "data": img_bytes
-            }
-        ]
-        
+                "data": base64.b64decode(img_b64)
+            })
+            
         try:
-            response = await model.generate_content_async(
-                parts,
-                generation_config=genai.types.GenerationConfig(
-                    response_mime_type="application/json",
-                    temperature=0.1,
+            response = await self.model.generate_content_async(
+                content,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json"
                 )
             )
             
-            result = json.loads(response.text)
-            page_answers = result.get("answers", [])
+            result_text = response.text
             
-            for ans in page_answers:
-                bbox = ans.get("boundingBox", {})
-                
-                # Convert from 0-1000 scale to 0-1 normalized coordinates
-                ymin = bbox.get("ymin", 0) / 1000.0
-                xmin = bbox.get("xmin", 0) / 1000.0
-                ymax = bbox.get("ymax", 1000) / 1000.0
-                xmax = bbox.get("xmax", 1000) / 1000.0
-                
-                # Clamp values between 0 and 1
-                ymin = max(0.0, min(1.0, ymin))
-                xmin = max(0.0, min(1.0, xmin))
-                ymax = max(0.0, min(1.0, ymax))
-                xmax = max(0.0, min(1.0, xmax))
-                
-                normalized_answer = {
-                    "detectedQuestion": _normalize_question_number(ans.get("detectedQuestion")),
-                    "text": str(ans.get("text", "")).strip(),
-                    "page": page_num,
-                    "confidence": float(ans.get("confidence", 0.5)),
-                    "region": {
-                        "page": page_num,
-                        "x": xmin,
-                        "y": ymin,
-                        "width": xmax - xmin,
-                        "height": ymax - ymin,
-                    }
-                }
-                
-                all_answers.append(normalized_answer)
-                
+            # Safe JSON parsing
+            if result_text.startswith("```json"):
+                result_text = result_text.replace("```json\n", "", 1)
+                if result_text.endswith("```"):
+                    result_text = result_text[:-3]
+            elif result_text.startswith("```"):
+                result_text = result_text.replace("```\n", "", 1)
+                if result_text.endswith("```"):
+                    result_text = result_text[:-3]
+                    
+            result = json.loads(result_text)
+            all_raw_answers.extend(result.get("answers", []))
+            
         except Exception as e:
-            print(f"Error extracting answers from page {page_num}: {e}")
-            continue
-    
-    return all_answers
-
-
-def _normalize_question_number(raw: Any) -> str | None:
-    """
-    Normalize detected question numbers to a consistent format.
-    Examples: "Q1" -> "1", "Ans 3(a)" -> "3(a)", "q2." -> "2"
-    """
-    if raw is None:
-        return None
-    
-    s = str(raw).strip()
-    if not s:
-        return None
-    
-    # Remove common prefixes
-    for prefix in ["Q.", "Q", "q.", "q", "Ans.", "Ans", "ans.", "ans", "A.", "A"]:
-        if s.lower().startswith(prefix.lower()):
-            s = s[len(prefix):].strip()
-            break
-    
-    # Remove trailing dots and spaces
-    s = s.strip(". ")
-    
-    return s if s else None
+            import traceback
+            traceback.print_exc()
+            print(f"Answer Extraction error: {e}")
+            raise ValueError("Answer extraction failed during AI model call.")
+            
+        # Normalize and validate coordinates
+        normalized_answers = []
+        for i, raw_ans in enumerate(all_raw_answers):
+            regions = []
+            for r in raw_ans.get("regions", []):
+                # Clamp coordinates safely
+                x = max(0.0, min(1.0, float(r.get("x", 0))))
+                y = max(0.0, min(1.0, float(r.get("y", 0))))
+                width = max(0.0, min(1.0, float(r.get("width", 0))))
+                height = max(0.0, min(1.0, float(r.get("height", 0))))
+                
+                if x + width > 1.0: width = 1.0 - x
+                if y + height > 1.0: height = 1.0 - y
+                
+                # Only keep sensible regions
+                if width > 0.01 and height > 0.01:
+                    regions.append(BoundingBox(
+                        page=int(r.get("page", 1)),
+                        x=x, y=y, width=width, height=height
+                    ))
+            
+            if regions:
+                ans_id = f"ans_{str(uuid.uuid4())[:8]}"
+                normalized_answers.append(ExtractedAnswer(
+                    answerId=ans_id,
+                    sequence=i + 1,
+                    detectedQuestionLabel=raw_ans.get("detectedQuestionLabel"),
+                    rawQuestionLabel=raw_ans.get("rawQuestionLabel"),
+                    text=raw_ans.get("text", ""),
+                    confidence=raw_ans.get("confidence", 0.8),
+                    regions=regions
+                ))
+                
+        return normalized_answers

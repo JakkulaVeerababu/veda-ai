@@ -1,70 +1,44 @@
 "use client";
 
-import React, { useState } from "react";
-import type { AnswerMapping } from "@/lib/types";
+import React from "react";
+import type { ExtractedQuestion } from "@/lib/types";
 import QuestionCard from "./QuestionCard";
 
 interface QuestionListProps {
-  mappings: AnswerMapping[];
-  selectedQuestionId: string | null;
-  onSelectQuestion: (questionId: string) => void;
+  questions: ExtractedQuestion[];
 }
 
 export default function QuestionList({
-  mappings,
-  selectedQuestionId,
-  onSelectQuestion,
+  questions,
 }: QuestionListProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [expandAll, setExpandAll] = useState(false);
-
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleExpandAll = () => {
-    if (expandAll) {
-      setExpandedIds(new Set());
-    } else {
-      setExpandedIds(new Set(mappings.map((m) => m.questionId)));
-    }
-    setExpandAll(!expandAll);
-  };
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-gray-50/50">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-veda-gray-200 flex items-center justify-between shrink-0">
-        <h2 className="text-sm font-semibold text-veda-dark">
-          Extracted Questions{" "}
-          <span className="text-veda-gray-400 font-normal">(from question paper)</span>
-        </h2>
-        <button
-          onClick={handleExpandAll}
-          className="text-xs font-medium text-veda-orange hover:text-veda-orange-hover transition-colors"
-        >
-          {expandAll ? "Collapse All" : "Expand All"}
-        </button>
+      <div className="px-5 py-4 border-b border-veda-gray-200 bg-white flex items-center justify-between shrink-0">
+        <div>
+          <h2 className="text-base font-semibold text-veda-dark">
+            Questions Extracted
+          </h2>
+          <p className="text-xs text-veda-gray-500 mt-0.5">
+            {questions.length} {questions.length === 1 ? 'question' : 'questions'} found
+          </p>
+        </div>
       </div>
 
       {/* Question list */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-        {mappings.map((mapping) => (
-          <QuestionCard
-            key={mapping.questionId}
-            mapping={mapping}
-            questionNumber={mapping.questionId}
-            isSelected={selectedQuestionId === mapping.questionId}
-            onClick={() => onSelectQuestion(mapping.questionId)}
-            isExpanded={expandedIds.has(mapping.questionId)}
-            onToggleExpand={() => toggleExpand(mapping.questionId)}
-          />
-        ))}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+        {questions.length === 0 ? (
+          <div className="text-center py-10">
+            <p className="text-veda-gray-400 text-sm">No questions detected.</p>
+          </div>
+        ) : (
+          questions.map((question) => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+            />
+          ))
+        )}
       </div>
     </div>
   );

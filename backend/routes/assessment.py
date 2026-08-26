@@ -10,10 +10,6 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 import google.generativeai as genai
 
 from services.pdf_service import convert_to_images
-from services.question_extractor import extract_questions
-from services.answer_extractor import extract_answers
-from services.answer_mapper import map_answers_to_questions
-from services.grading_service import grade_answers
 from schemas.assessment import (
     ProcessingStatus,
     ProcessingResponse,
@@ -129,99 +125,60 @@ async def _run_pipeline(
     as_bytes: bytes,
     as_filename: str,
 ):
-    """Execute the full processing pipeline in the background."""
+    """Execute Phase 2: Create job and prepare document images in the background."""
     try:
-        # Configure Gemini model
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        import os
+        import json
+        
+        job_dir = os.path.join("tmp", task_id)
+        q_dir = os.path.join(job_dir, "question")
+        a_dir = os.path.join(job_dir, "answer")
+        
+        os.makedirs(q_dir, exist_ok=True)
+        os.makedirs(a_dir, exist_ok=True)
         
         # ── Stage 1: Convert PDFs to images ──
-        _update_task(task_id, "extracting_questions", 10, "Converting question paper to images...")
-        qp_images, qp_page_count = convert_to_images(qp_bytes, qp_filename)
+        _update_task(task_id, "preparing_documents", 10, "Converting question paper to images...")
+        qp_images, qp_page_count = await asyncio.to_thread(convert_to_images, qp_bytes, qp_filename)
         
-        _update_task(task_id, "extracting_questions", 15, "Converting answer sheet to images...")
-        as_images, as_page_count = convert_to_images(as_bytes, as_filename)
+        for i, img_b64 in enumerate(qp_images):
+            import base64
+            def _write_qp():
+                with open(os.path.join(q_dir, f"page_{i+1:03d}.png"), "wb") as f:
+                    f.write(base64.b64decode(img_b64))
+            await asyncio.to_thread(_write_qp)
+                
+        _update_task(task_id, "preparing_documents", 50, "Converting answer sheet to images...")
+        as_images, as_page_count = await asyncio.to_thread(convert_to_images, as_bytes, as_filename)
         
-        # ── Stage 2: Extract questions ──
-        _update_task(task_id, "extracting_questions", 25, "Analyzing question paper...")
-        questions = await extract_questions(qp_images, model)
-        
-        q_count = len(questions)
-        _update_task(task_id, "extracting_answers", 35, f"{q_count} questions detected. Reading answers...")
-        
-        # ── Stage 3: Extract answers with bounding boxes ──
-        _update_task(task_id, "extracting_answers", 45, "Analyzing handwritten answers...")
-        raw_answers = await extract_answers(as_images, model)
-        
-        a_count = len(raw_answers)
-        _update_task(task_id, "mapping", 60, f"{a_count} answer regions found. Mapping answers...")
-        
-        # ── Stage 4: Map answers to questions ──
-        _update_task(task_id, "mapping", 65, "Mapping answers to questions...")
-        mappings, unmatched = await map_answers_to_questions(questions, raw_answers, model)
-        
-        # ── Stage 5: Grade answers ──
-        _update_task(task_id, "grading", 80, "Generating grades and feedback...")
-        grades = await grade_answers(mappings, questions, model)
-        
-        # Merge grades into mappings
-        grade_lookup = {g["questionId"]: g for g in grades}
-        for m in mappings:
-            if m["questionId"] in grade_lookup:
-                g = grade_lookup[m["questionId"]]
-                m["grading"] = {
-                    "score": g["score"],
-                    "maxScore": g["maxScore"],
-                    "status": g["status"],
-                    "feedback": g["feedback"],
-                }
-        
-        # ── Stage 6: Compute summary ──
-        _update_task(task_id, "preparing", 90, "Preparing results...")
-        
-        answered_count = sum(1 for m in mappings if m["status"] == "answered")
-        unanswered_count = sum(1 for m in mappings if m["status"] == "unanswered")
-        review_count = sum(1 for m in mappings if m["status"] == "needs_review")
-        
-        total_score = sum(
-            m.get("grading", {}).get("score", 0)
-            for m in mappings if m.get("grading")
-        )
-        max_score = sum(
-            m.get("grading", {}).get("maxScore", 0)
-            for m in mappings if m.get("grading")
-        )
-        
-        summary = AssessmentSummary(
-            totalQuestions=len(questions),
-            answered=answered_count,
-            unanswered=unanswered_count,
-            needsReview=review_count,
-            totalScore=total_score,
-            maxScore=max_score,
-            accuracy=round((total_score / max_score * 100) if max_score > 0 else 0, 1),
-        )
-        
-        result = ProcessingResponse(
-            questions=questions,
-            mappings=mappings,
-            unmatchedAnswers=unmatched,
-            summary=summary,
-            answerSheetPages=as_images,
-            questionPaperPages=qp_images,
-        )
-        
+        for i, img_b64 in enumerate(as_images):
+            import base64
+            def _write_as():
+                with open(os.path.join(a_dir, f"page_{i+1:03d}.png"), "wb") as f:
+                    f.write(base64.b64decode(img_b64))
+            await asyncio.to_thread(_write_as)
+                
+        # Save metadata
+        metadata = {
+            "jobId": task_id,
+            "questionPageCount": qp_page_count,
+            "answerPageCount": as_page_count
+        }
+        with open(os.path.join(job_dir, "metadata.json"), "w") as f:
+            json.dump(metadata, f)
+            
         tasks[task_id]["status"] = "completed"
-        tasks[task_id]["stage"] = "completed"
+        tasks[task_id]["stage"] = "documents_prepared"
         tasks[task_id]["progress"] = 100
-        tasks[task_id]["message"] = "Processing complete!"
-        tasks[task_id]["result"] = result
+        tasks[task_id]["message"] = "Documents prepared successfully."
+        # We only return the jobId in Phase 2
+        tasks[task_id]["result"] = {"jobId": task_id}
         
     except Exception as e:
         traceback.print_exc()
         tasks[task_id]["status"] = "error"
         tasks[task_id]["error"] = str(e)
         tasks[task_id]["message"] = f"Processing failed: {str(e)}"
-
 
 def _update_task(task_id: str, stage: str, progress: int, message: str):
     """Update task progress."""

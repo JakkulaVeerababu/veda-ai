@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 
 from routes.assessment import router as assessment_router
+from routes.questions import router as questions_router
+from routes.answers import router as answers_router
 
 # Load environment variables
 load_dotenv()
@@ -39,8 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from routes.mapping import router as mapping_router
+
 # Include routes
 app.include_router(assessment_router)
+app.include_router(questions_router)
+app.include_router(answers_router)
+app.include_router(mapping_router)
 
 
 @app.get("/")

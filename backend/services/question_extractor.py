@@ -1,97 +1,107 @@
 """
-Question Extractor Service — Uses Gemini Flash to extract questions from question paper images.
-Handles sub-questions, marks detection, and maintains original numbering.
+Question Extractor Service — Uses Vision AI to extract questions from question paper images.
 """
+import os
 import json
 import base64
 import google.generativeai as genai
 from typing import List, Dict, Any
 
+from schemas.questions import ExtractedQuestion
+from services.question_normalizer import normalize_questions
 
-QUESTION_EXTRACTION_PROMPT = """You are an expert at analyzing examination question papers. 
-Analyze the provided question paper image(s) and extract ALL questions.
 
-CRITICAL RULES:
-1. Extract EVERY question including sub-questions (e.g., 3(a), 3(b), 11a, 11b)
-2. Sub-questions MUST be separate entries
-3. Preserve the EXACT original numbering format
-4. If marks are visible next to questions, extract them
-5. Maintain the printed order
+QUESTION_EXTRACTION_PROMPT = """You are extracting questions from an exam question paper.
+Return every actual question in printed order.
 
-Return a JSON array with this EXACT structure:
+Rules:
+1. Preserve original question numbering EXACTLY as printed (e.g., 1, 2, 3(a), 3(b), i, ii, A, B).
+2. Treat labelled sub-parts as separate questions. Do not merge 11(a) and 11(b) into one question.
+3. Do not invent missing questions. If text cannot be read confidently, do not invent it.
+4. Do not include headers, footers, school names, instructions (e.g. "Answer any five questions", "Time: 3 Hours"), dates, or page numbers as questions.
+5. Include the complete question text, including any text continuing onto the next page.
+6. If a question continues onto the next page, merge it into one question and specify sourcePageEnd.
+7. Extract marks if clearly associated with a question (e.g. [5], 5M, 5 Marks).
+8. Preserve printed order across pages.
+9. Return strict JSON only. Do not wrap in markdown fences.
+
+Return a JSON object with this EXACT structure:
 {
   "questions": [
     {
-      "number": "1",
-      "text": "Full question text here",
-      "marks": 2,
-      "order": 1
-    },
-    {
-      "number": "3(a)",
-      "text": "Sub-question text",
+      "number": "11(a)",
+      "text": "Explain the architecture of a convolutional neural network.",
+      "page": 1,
+      "sourcePageEnd": 1,
+      "section": "Section A",
       "marks": 5,
-      "order": 4
+      "confidence": 0.97
     }
   ]
 }
-
-IMPORTANT:
-- "number" should match exactly what's printed (e.g., "1", "2", "3(a)", "3(b)", "11a", "11.b")
-- "marks" should be null if not visible
-- "order" should be a sequential integer starting from 1
-- Extract the COMPLETE question text, not just the first few words
-- If a question has parts like (a), (b), (c), each part is a SEPARATE entry
 """
 
-
-async def extract_questions(page_images_b64: List[str], model: genai.GenerativeModel) -> List[Dict[str, Any]]:
-    """
-    Extract all questions from question paper images using Gemini Flash.
-    
-    Args:
-        page_images_b64: List of base64-encoded PNG images of question paper pages
-        model: Configured Gemini model instance
+class VisionService:
+    def __init__(self):
+        self.api_key = os.getenv("GEMINI_API_KEY", "")
+        self.model_name = os.getenv("QUESTION_EXTRACTION_MODEL", "gemini-3.6-flash")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY is not configured")
+            
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel(self.model_name)
         
-    Returns:
-        List of question dictionaries
-    """
-    # Build the content parts: prompt + all page images
-    parts = [QUESTION_EXTRACTION_PROMPT]
-    
-    for i, img_b64 in enumerate(page_images_b64):
-        img_bytes = base64.b64decode(img_b64)
-        parts.append(f"\n--- Question Paper Page {i + 1} ---")
-        parts.append({
-            "mime_type": "image/png",
-            "data": img_bytes
-        })
-    
-    response = await model.generate_content_async(
-        parts,
-        generation_config=genai.types.GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0.1,
-        )
-    )
-    
-    # Parse the JSON response
-    result = json.loads(response.text)
-    questions = result.get("questions", [])
-    
-    # Normalize and validate
-    normalized = []
-    for i, q in enumerate(questions):
-        number = str(q.get("number", str(i + 1))).strip()
-        normalized.append({
-            "id": number,
-            "number": number,
-            "text": str(q.get("text", "")).strip(),
-            "order": q.get("order", i + 1),
-            "marks": q.get("marks"),
-        })
-    
-    # Sort by order
-    normalized.sort(key=lambda x: x["order"])
-    
-    return normalized
+    async def extract_questions(self, page_images_b64: List[str]) -> List[ExtractedQuestion]:
+        """
+        Extract all questions from question paper images using Vision AI.
+        Processes in batches if necessary.
+        """
+        all_raw_questions = []
+        
+        content = [QUESTION_EXTRACTION_PROMPT]
+        
+        for i, img_b64 in enumerate(page_images_b64):
+            page_num = i + 1
+            content.append(f"--- IMAGE {page_num} = printed page {page_num} ---")
+            content.append({
+                "mime_type": "image/png",
+                "data": base64.b64decode(img_b64)
+            })
+            
+        try:
+            response = await self.model.generate_content_async(
+                content,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            
+            result_text = response.text
+            
+            # Safe JSON parsing
+            if result_text.startswith("```json"):
+                result_text = result_text.replace("```json\n", "", 1)
+                if result_text.endswith("```"):
+                    result_text = result_text[:-3]
+            elif result_text.startswith("```"):
+                result_text = result_text.replace("```\n", "", 1)
+                if result_text.endswith("```"):
+                    result_text = result_text[:-3]
+                    
+            result = json.loads(result_text)
+            all_raw_questions.extend(result.get("questions", []))
+            
+        except Exception as e:
+            print(f"Extraction error: {e}")
+            raise ValueError("Question extraction failed during AI model call.")
+            
+        # Normalize and deduplicate
+        normalized = normalize_questions(all_raw_questions)
+        
+        return normalized
+
+async def extract_questions(page_images_b64: List[str], api_key: str = None) -> List[Dict[str, Any]]:
+    """Legacy wrapper for backward compatibility with assessment.py"""
+    service = VisionService()
+    questions = await service.extract_questions(page_images_b64)
+    return [q.model_dump() for q in questions]

@@ -1,267 +1,224 @@
-"""
-Answer Mapper Service — Maps extracted student answers to extracted questions
-using multiple signals: written question numbers, semantic similarity, and AI verification.
-"""
 import json
-import base64
-import google.generativeai as genai
-from typing import List, Dict, Any, Optional, Tuple
+import logging
+from typing import List, Dict, Any, Optional
 
+from schemas.questions import ExtractedQuestion
+from schemas.answers import ExtractedAnswer
+from schemas.mapping import (
+    MappingStatus, QuestionAnswerMapping, UnmatchedAnswer,
+    MappingSummary, MappingResponse
+)
+from services.semantic_matcher import SemanticMatcher
+from services.mapping_verifier import MappingVerifier
 
-SEMANTIC_MATCHING_PROMPT = """You are an expert at matching student answers to exam questions.
+logger = logging.getLogger(__name__)
 
-I have some unmatched student answers and unmatched questions. 
-For each unmatched answer, determine which question it most likely answers.
+# Configurable Thresholds
+EXACT_LABEL_CONFIDENCE = 0.99
+SEMANTIC_AUTO_MATCH_THRESHOLD = 0.82
+SEMANTIC_REVIEW_THRESHOLD = 0.60
+CANDIDATE_MARGIN_THRESHOLD = 0.08
 
-UNMATCHED QUESTIONS:
-{questions_json}
-
-UNMATCHED ANSWERS:
-{answers_json}
-
-For each answer, analyze its content and determine:
-1. Which question does it most likely answer?
-2. How confident are you? (0.0 to 1.0)
-
-Return JSON:
-{{
-  "matches": [
-    {{
-      "answerIndex": 0,
-      "questionId": "3(a)",
-      "confidence": 0.85,
-      "reasoning": "Brief explanation"
-    }}
-  ]
-}}
-
-RULES:
-- Only match if you're reasonably confident (>0.5)
-- One answer can only match one question
-- One question can only have one answer
-- If unsure, don't match (omit from the list)
-"""
-
-
-async def map_answers_to_questions(
-    questions: List[Dict[str, Any]],
-    answers: List[Dict[str, Any]],
-    model: genai.GenerativeModel
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Map extracted answers to questions using multi-signal approach.
-    
-    Args:
-        questions: Extracted questions from question paper
-        answers: Extracted answers from answer sheets
-        model: Configured Gemini model instance
+class AnswerMapperService:
+    def __init__(self):
+        self.semantic_matcher = SemanticMatcher()
+        self.mapping_verifier = MappingVerifier()
         
-    Returns:
-        Tuple of (mapped results list, unmatched answers list)
-    """
-    # Build question lookup
-    question_map = {q["id"]: q for q in questions}
-    
-    # Track which questions and answers have been matched
-    matched_questions = set()
-    matched_answers = set()
-    
-    # Result: questionId -> list of answer data
-    mappings: Dict[str, Dict[str, Any]] = {}
-    
-    # ═══════════════════════════════════════════
-    # SIGNAL 1: Direct question number matching
-    # ═══════════════════════════════════════════
-    for i, ans in enumerate(answers):
-        detected_q = ans.get("detectedQuestion")
-        if detected_q and detected_q in question_map:
-            q_id = detected_q
-            if q_id not in mappings:
-                mappings[q_id] = {
-                    "questionId": q_id,
-                    "questionText": question_map[q_id]["text"],
-                    "status": "answered",
-                    "answerText": ans["text"],
-                    "confidence": ans.get("confidence", 0.8),
-                    "regions": [ans["region"]],
-                }
-                matched_questions.add(q_id)
-                matched_answers.add(i)
-            else:
-                # Multi-region: same question, additional region (multi-page answer)
-                mappings[q_id]["regions"].append(ans["region"])
-                # Concatenate text
-                mappings[q_id]["answerText"] += "\n" + ans["text"]
-                # Update confidence (take average)
-                existing_conf = mappings[q_id]["confidence"] or 0.8
-                mappings[q_id]["confidence"] = (existing_conf + ans.get("confidence", 0.8)) / 2
-    
-    # ═══════════════════════════════════════════
-    # SIGNAL 2: Fuzzy question number matching
-    # ═══════════════════════════════════════════
-    for i, ans in enumerate(answers):
-        if i in matched_answers:
-            continue
-        detected_q = ans.get("detectedQuestion")
-        if detected_q:
-            # Try fuzzy matching: "3a" -> "3(a)", "11 b" -> "11(b)" etc.
-            fuzzy_id = _fuzzy_match_question_id(detected_q, list(question_map.keys()))
-            if fuzzy_id and fuzzy_id not in matched_questions:
-                mappings[fuzzy_id] = {
-                    "questionId": fuzzy_id,
-                    "questionText": question_map[fuzzy_id]["text"],
-                    "status": "answered",
-                    "answerText": ans["text"],
-                    "confidence": ans.get("confidence", 0.7) * 0.9,  # Slight confidence reduction
-                    "regions": [ans["region"]],
-                }
-                matched_questions.add(fuzzy_id)
-                matched_answers.add(i)
-    
-    # ═══════════════════════════════════════════
-    # SIGNAL 3: AI semantic matching for unmatched
-    # ═══════════════════════════════════════════
-    unmatched_questions = [q for q in questions if q["id"] not in matched_questions]
-    unmatched_answers_list = [
-        {"index": i, "text": ans["text"], "page": ans["page"]}
-        for i, ans in enumerate(answers)
-        if i not in matched_answers and ans["text"].strip()
-    ]
-    
-    if unmatched_questions and unmatched_answers_list:
-        try:
-            ai_matches = await _semantic_match(
-                unmatched_questions, unmatched_answers_list, model
-            )
+    def _normalize_label(self, label: Optional[str]) -> Optional[str]:
+        """Normalizes a label for matching."""
+        if not label:
+            return None
+        l = label.strip()
+        for prefix in ["Q.", "Q", "q.", "q", "Ans.", "Ans", "ans.", "ans", "A.", "A"]:
+            if l.lower().startswith(prefix.lower()):
+                l = l[len(prefix):].strip()
+                break
+        return l.strip(". ").lower().replace(" ", "")
+
+    async def map_answers(
+        self, 
+        job_id: str, 
+        questions: List[ExtractedQuestion], 
+        answers: List[ExtractedAnswer]
+    ) -> MappingResponse:
+        
+        # Build lookup tables
+        q_dict = {q.id: q for q in questions}
+        q_norm_dict = {self._normalize_label(q.number): q.id for q in questions if q.number}
+        
+        mapped_answers = {}  # answer_id -> question_id
+        answer_methods = {}
+        answer_confidences = {}
+        answer_reasons = {}
+        
+        unmatched_answers = []
+        
+        # Compute Semantic Similarity Matrix
+        q_dicts = [{"id": q.id, "number": q.number, "text": q.text} for q in questions]
+        a_dicts = [{"id": a.answerId, "text": a.text} for a in answers]
+        
+        similarity_matrix = await self.semantic_matcher.compute_similarity_matrix(q_dicts, a_dicts)
+        
+        for ans_idx, ans in enumerate(answers):
+            ans_norm_label = self._normalize_label(ans.detectedQuestionLabel)
+            ans_norm_raw_label = self._normalize_label(ans.rawQuestionLabel)
             
-            for match in ai_matches:
-                ans_idx = match["answerIndex"]
-                q_id = match["questionId"]
-                confidence = match.get("confidence", 0.5)
+            matched_q_id = None
+            method = "none"
+            confidence = 0.0
+            reasons = []
+            
+            # Extract scores for this answer
+            scores = []
+            if len(similarity_matrix) > 0 and len(similarity_matrix[0]) > ans_idx:
+                for q_idx, q in enumerate(questions):
+                    scores.append({"questionId": q.id, "score": float(similarity_matrix[q_idx][ans_idx])})
+                scores.sort(key=lambda x: x["score"], reverse=True)
+            
+            # 1. Exact Label Match with Conflict Detection
+            label_matched_q_id = None
+            if ans_norm_label and ans_norm_label in q_norm_dict:
+                label_matched_q_id = q_norm_dict[ans_norm_label]
+            elif ans_norm_raw_label and ans_norm_raw_label in q_norm_dict:
+                label_matched_q_id = q_norm_dict[ans_norm_raw_label]
                 
-                # Only accept matches above threshold
-                if confidence >= 0.5 and q_id in question_map and q_id not in matched_questions:
-                    original_idx = unmatched_answers_list[ans_idx]["index"]
-                    if original_idx not in matched_answers:
-                        ans = answers[original_idx]
-                        status = "answered" if confidence >= 0.7 else "needs_review"
-                        mappings[q_id] = {
-                            "questionId": q_id,
-                            "questionText": question_map[q_id]["text"],
-                            "status": status,
-                            "answerText": ans["text"],
-                            "confidence": confidence,
-                            "regions": [ans["region"]],
-                        }
-                        matched_questions.add(q_id)
-                        matched_answers.add(original_idx)
-        except Exception as e:
-            print(f"Semantic matching failed: {e}")
-    
-    # ═══════════════════════════════════════════
-    # Build final results
-    # ═══════════════════════════════════════════
-    
-    # Add unanswered questions
-    for q in questions:
-        if q["id"] not in mappings:
-            mappings[q["id"]] = {
-                "questionId": q["id"],
-                "questionText": q["text"],
-                "status": "unanswered",
-                "answerText": None,
-                "confidence": None,
-                "regions": [],
-            }
-    
-    # Collect truly unmatched answers
-    unmatched = []
-    for i, ans in enumerate(answers):
-        if i not in matched_answers and ans["text"].strip():
-            unmatched.append({
-                "text": ans["text"],
-                "page": ans["page"],
-                "regions": [ans["region"]],
-                "reason": "Could not confidently map this answer to a question.",
-            })
-    
-    # Sort mappings by question order
-    sorted_mappings = sorted(
-        mappings.values(),
-        key=lambda m: next(
-            (q["order"] for q in questions if q["id"] == m["questionId"]),
-            999
+            if label_matched_q_id:
+                # Find semantic score for this exact match
+                label_q_score = next((s["score"] for s in scores if s["questionId"] == label_matched_q_id), 0.0)
+                
+                # Conflict detection: If label matches, but it has very low semantic score AND another question has very high score
+                conflict = False
+                if scores:
+                    top1 = scores[0]
+                    if top1["questionId"] != label_matched_q_id and top1["score"] > 0.85 and label_q_score < 0.4:
+                        conflict = True
+                        
+                if not conflict:
+                    matched_q_id = label_matched_q_id
+                    method = "label_exact"
+                    confidence = EXACT_LABEL_CONFIDENCE
+                    reasons.append(f"Exact normalized question label match (semantic score: {label_q_score:.2f})")
+                else:
+                    reasons.append(f"Conflict detected: Label matches Q{label_matched_q_id} (score {label_q_score:.2f}), but semantics match Q{top1['questionId']} (score {top1['score']:.2f})")
+                    # Fallthrough to AI verification for the conflict
+            
+            # 2. Semantic Matching / Conflict Resolution
+            if not matched_q_id and ans.text.strip() and scores:
+                top1 = scores[0]
+                
+                # If we had a label but it conflicted, top_k should include the labeled question and top semantic question
+                if label_matched_q_id:
+                    top_k_ids = [label_matched_q_id, top1["questionId"]]
+                else:
+                    top_k_ids = [top1["questionId"]]
+                    if len(scores) > 1:
+                        top_k_ids.append(scores[1]["questionId"])
+                
+                # Check margin if we don't have a label conflict
+                margin_safe = True
+                if not label_matched_q_id and len(scores) > 1:
+                    top2 = scores[1]
+                    if (top1["score"] - top2["score"]) < CANDIDATE_MARGIN_THRESHOLD:
+                        margin_safe = False
+                        
+                if margin_safe and not label_matched_q_id and top1["score"] >= SEMANTIC_AUTO_MATCH_THRESHOLD:
+                    matched_q_id = top1["questionId"]
+                    method = "semantic"
+                    confidence = top1["score"]
+                    reasons.append(f"Strong semantic match (score: {top1['score']:.2f})")
+                elif top1["score"] >= SEMANTIC_REVIEW_THRESHOLD or label_matched_q_id:
+                    # 3. AI Verification (Conflict/Ambiguity)
+                    top_k = [q for q in q_dicts if q["id"] in top_k_ids]
+                    
+                    verification = await self.mapping_verifier.verify_mapping(
+                        answer_text=ans.text,
+                        detected_label=ans.detectedQuestionLabel,
+                        candidates=top_k
+                    )
+                    if verification.get("decision") == "match" and verification.get("questionId"):
+                        matched_q_id = verification["questionId"]
+                        method = "semantic_ai_verified"
+                        confidence = verification.get("confidence", 0.8)
+                        reasons.append(f"AI verified ambiguity: {verification.get('reasonCode')}")
+                    else:
+                        reasons.append(f"AI verifier rejected match or couldn't decide.")
+                else:
+                    reasons.append(f"Top semantic score too low: {top1['score']:.2f}")
+            
+            # Record matching result
+            if matched_q_id:
+                mapped_answers[ans.answerId] = matched_q_id
+                answer_methods[ans.answerId] = method
+                answer_confidences[ans.answerId] = confidence
+                answer_reasons[ans.answerId] = reasons
+            else:
+                unmatched_answers.append(UnmatchedAnswer(
+                    answerId=ans.answerId,
+                    detectedQuestionLabel=ans.detectedQuestionLabel,
+                    confidence=confidence,
+                    reason="; ".join(reasons) if reasons else "No label match and semantics too weak."
+                ))
+                
+        # Build Final Question Mappings (in question order)
+        final_mappings = []
+        answered_count = 0
+        unanswered_count = 0
+        needs_review_count = 0
+        
+        # Build reverse lookup: question_id -> list of answer_ids
+        q_to_ans = {q.id: [] for q in questions}
+        for a_id, q_id in mapped_answers.items():
+            if q_id in q_to_ans:
+                q_to_ans[q_id].append(a_id)
+                
+        for q in questions:
+            ans_ids = q_to_ans.get(q.id, [])
+            status = MappingStatus.UNANSWERED
+            confidence = None
+            method = None
+            reasons = []
+            
+            if len(ans_ids) == 1:
+                status = MappingStatus.ANSWERED
+                confidence = answer_confidences[ans_ids[0]]
+                method = answer_methods[ans_ids[0]]
+                reasons = answer_reasons[ans_ids[0]]
+                answered_count += 1
+            elif len(ans_ids) > 1:
+                status = MappingStatus.NEEDS_REVIEW
+                confidences = [answer_confidences[aid] for aid in ans_ids if answer_confidences[aid] is not None]
+                confidence = max(confidences) if confidences else 0.8
+                method = "multiple"
+                reasons = ["Multiple answers mapped to this question."]
+                needs_review_count += 1
+            else:
+                status = MappingStatus.UNANSWERED
+                confidence = 1.0
+                method = "none"
+                unanswered_count += 1
+                
+            final_mappings.append(QuestionAnswerMapping(
+                questionId=q.id,
+                questionNumber=q.number,
+                answerIds=ans_ids,
+                status=status,
+                confidence=confidence,
+                method=method,
+                reasons=reasons
+            ))
+            
+        summary = MappingSummary(
+            totalQuestions=len(questions),
+            answered=answered_count,
+            unanswered=unanswered_count,
+            needsReview=needs_review_count,
+            unmatchedAnswers=len(unmatched_answers)
         )
-    )
-    
-    return sorted_mappings, unmatched
-
-
-async def _semantic_match(
-    questions: List[Dict],
-    answers: List[Dict],
-    model: genai.GenerativeModel
-) -> List[Dict]:
-    """Use Gemini to semantically match unmatched answers to unmatched questions."""
-    
-    questions_json = json.dumps([
-        {"id": q["id"], "text": q["text"]} for q in questions
-    ], indent=2)
-    
-    answers_json = json.dumps([
-        {"index": i, "text": a["text"][:500]} for i, a in enumerate(answers)
-    ], indent=2)
-    
-    prompt = SEMANTIC_MATCHING_PROMPT.format(
-        questions_json=questions_json,
-        answers_json=answers_json,
-    )
-    
-    response = await model.generate_content_async(
-        prompt,
-        generation_config=genai.types.GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0.1,
+        
+        return MappingResponse(
+            jobId=job_id,
+            status="completed",
+            summary=summary,
+            mappings=final_mappings,
+            unmatchedAnswers=unmatched_answers
         )
-    )
-    
-    result = json.loads(response.text)
-    return result.get("matches", [])
-
-
-def _fuzzy_match_question_id(detected: str, valid_ids: List[str]) -> Optional[str]:
-    """
-    Try to fuzzy-match a detected question number to a valid question ID.
-    Examples: "3a" -> "3(a)", "11 b" -> "11(b)", "3.a" -> "3(a)"
-    """
-    if not detected:
-        return None
-    
-    # Direct match first
-    if detected in valid_ids:
-        return detected
-    
-    # Normalize: remove spaces, periods
-    clean = detected.replace(" ", "").replace(".", "").lower()
-    
-    for vid in valid_ids:
-        vid_clean = vid.replace(" ", "").replace(".", "").replace("(", "").replace(")", "").lower()
-        if clean == vid_clean:
-            return vid
-    
-    # Try adding parentheses: "3a" -> "3(a)"
-    import re
-    match = re.match(r'^(\d+)\s*([a-z])$', clean, re.IGNORECASE)
-    if match:
-        num, letter = match.groups()
-        candidates = [
-            f"{num}({letter})",
-            f"{num}({letter.upper()})",
-            f"{num}{letter}",
-            f"{num}.{letter}",
-        ]
-        for c in candidates:
-            if c in valid_ids:
-                return c
-    
-    return None
