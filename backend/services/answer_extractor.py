@@ -10,6 +10,7 @@ from typing import List
 
 from schemas.answers import ExtractedAnswer
 from schemas.assessment import BoundingBox
+from utils.retry import with_retry
 
 
 ANSWER_EXTRACTION_PROMPT = """You are analyzing handwritten student answer-sheet pages.
@@ -18,8 +19,8 @@ Identify each distinct answer block.
 Rules:
 1. Detect the written question label if present (e.g. 1, Q1, 3(a)).
 2. Extract the handwritten answer text as accurately as possible. Do not rewrite grammar.
-3. Identify the exact region occupied by the answer.
-4. Return normalized coordinates from 0 to 1 using top-left origin (x, y, width, height).
+3. Identify the exact bounding box occupied by the answer.
+4. Return the bounding box as an array of 4 integers [ymin, xmin, ymax, xmax] scaled to 1000 (e.g. [310, 120, 520, 850]).
 5. If an answer continues across pages, return one answer with multiple regions.
 6. Do not reorder answers. Maintain physical writing order.
 7. Do not invent question labels. If there is no label, return null for detectedQuestionLabel.
@@ -38,10 +39,7 @@ Return a JSON object with this EXACT structure:
       "regions": [
         {
           "page": 2,
-          "x": 0.12,
-          "y": 0.31,
-          "width": 0.73,
-          "height": 0.21
+          "box_2d": [310, 120, 520, 850]
         }
       ]
     }
@@ -75,13 +73,17 @@ class AnswerVisionService:
                 "data": base64.b64decode(img_b64)
             })
             
-        try:
-            response = await self.model.generate_content_async(
+        @with_retry(max_retries=5, initial_delay=40.0)
+        async def _call_model(content):
+            return await self.model.generate_content_async(
                 content,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json"
                 )
             )
+
+        try:
+            response = await _call_model(content)
             
             result_text = response.text
             
@@ -109,11 +111,20 @@ class AnswerVisionService:
         for i, raw_ans in enumerate(all_raw_answers):
             regions = []
             for r in raw_ans.get("regions", []):
-                # Clamp coordinates safely
-                x = max(0.0, min(1.0, float(r.get("x", 0))))
-                y = max(0.0, min(1.0, float(r.get("y", 0))))
-                width = max(0.0, min(1.0, float(r.get("width", 0))))
-                height = max(0.0, min(1.0, float(r.get("height", 0))))
+                # Parse box_2d natively
+                if "box_2d" in r and len(r["box_2d"]) == 4:
+                    ymin, xmin, ymax, xmax = r["box_2d"]
+                    # Gemini outputs [ymin, xmin, ymax, xmax] scaled 0-1000
+                    x = max(0.0, min(1.0, float(xmin) / 1000.0))
+                    y = max(0.0, min(1.0, float(ymin) / 1000.0))
+                    width = max(0.0, min(1.0, float(xmax - xmin) / 1000.0))
+                    height = max(0.0, min(1.0, float(ymax - ymin) / 1000.0))
+                else:
+                    # Fallback if model disobeyed and used old format
+                    x = max(0.0, min(1.0, float(r.get("x", 0))))
+                    y = max(0.0, min(1.0, float(r.get("y", 0))))
+                    width = max(0.0, min(1.0, float(r.get("width", 0))))
+                    height = max(0.0, min(1.0, float(r.get("height", 0))))
                 
                 if x + width > 1.0: width = 1.0 - x
                 if y + height > 1.0: height = 1.0 - y

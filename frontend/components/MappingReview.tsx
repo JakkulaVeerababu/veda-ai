@@ -125,13 +125,13 @@ export default function MappingReview({ mappingResponse, questions, answers }: M
               </div>
             ) : (
               unmatchedAnswers.map((ua: UnmatchedAnswer) => {
-                const ans = answers.find(a => a.answerId === ua.answerId);
+                const ans = ua.answer;
                 return (
-                  <div key={ua.answerId} className="border border-orange-200 bg-orange-50/30 rounded-lg p-3">
-                    <div className="text-xs font-medium text-veda-orange mb-1">
-                      Detected Label: {ua.detectedQuestionLabel || "None"}
+                  <div key={ans.answerId} className="border border-orange-200 bg-orange-50/30 rounded-lg p-3">
+                    <div className="text-xs font-bold text-veda-orange mb-1 uppercase">
+                      Detected Label: {ans.detectedQuestionLabel || "None"}
                     </div>
-                    <div className="text-xs text-veda-gray-500 mb-2">
+                    <div className="text-xs text-orange-800 mb-2 font-medium">
                       Reason: {ua.reason}
                     </div>
                     <div className="text-sm text-veda-gray-600 line-clamp-4">

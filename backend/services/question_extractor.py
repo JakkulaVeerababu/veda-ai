@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 
 from schemas.questions import ExtractedQuestion
 from services.question_normalizer import normalize_questions
+from utils.retry import with_retry
 
 
 QUESTION_EXTRACTION_PROMPT = """You are extracting questions from an exam question paper.
@@ -68,13 +69,17 @@ class VisionService:
                 "data": base64.b64decode(img_b64)
             })
             
-        try:
-            response = await self.model.generate_content_async(
+        @with_retry(max_retries=5, initial_delay=40.0)
+        async def _call_model(content):
+            return await self.model.generate_content_async(
                 content,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json"
                 )
             )
+
+        try:
+            response = await _call_model(content)
             
             result_text = response.text
             

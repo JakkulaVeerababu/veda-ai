@@ -4,6 +4,7 @@ Grading Service — Uses Gemini Flash to grade student answers and provide feedb
 import json
 import google.generativeai as genai
 from typing import List, Dict, Any
+from utils.retry import with_retry
 
 
 GRADING_PROMPT = """You are a fair and helpful exam grader. Grade each student answer below.
@@ -80,14 +81,18 @@ async def grade_answers(
     qa_json = json.dumps(qa_pairs, indent=2)
     prompt = GRADING_PROMPT.format(qa_pairs=qa_json)
     
-    try:
-        response = await model.generate_content_async(
-            prompt,
+    @with_retry(max_retries=5, initial_delay=40.0)
+    async def _call_model(prompt_text):
+        return await model.generate_content_async(
+            prompt_text,
             generation_config=genai.types.GenerationConfig(
                 response_mime_type="application/json",
                 temperature=0.2,
             )
         )
+
+    try:
+        response = await _call_model(prompt)
         
         result = json.loads(response.text)
         grades = result.get("grades", [])

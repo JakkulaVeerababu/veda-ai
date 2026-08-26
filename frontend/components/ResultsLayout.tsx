@@ -2,30 +2,27 @@
 
 import React, { useState, useMemo } from "react";
 import {
-  MappingResponse,
+  AssessmentResults,
   ExtractedQuestion,
   ExtractedAnswer,
   QuestionAnswerMapping,
 } from "@/lib/types";
 import AnswerViewer from "./AnswerViewer";
-import { AlertCircle } from "lucide-react";
+import StatusBadge from "./StatusBadge";
+import ManualMappingDialog from "./ManualMappingDialog";
+import { AlertCircle, Search, Filter } from "lucide-react";
 
 interface ResultsLayoutProps {
-  jobId: string;
-  totalPages: number;
-  mappingResponse: MappingResponse;
-  questions: ExtractedQuestion[];
-  answers: ExtractedAnswer[];
+  results: AssessmentResults;
+  onUpdateMapping: (questionId: string, answerId: string | null) => void;
 }
 
 export default function ResultsLayout({
-  jobId,
-  totalPages,
-  mappingResponse,
-  questions,
-  answers,
+  results,
+  onUpdateMapping,
 }: ResultsLayoutProps) {
-  const { summary, mappings, unmatchedAnswers } = mappingResponse;
+  const { summary, mappings, unmatchedAnswers, questions, answers, jobId, metadata } = results;
+  const totalPages = metadata.answerPageCount;
 
   // 2. Data Lookups
   const answerById = useMemo(() => {
@@ -61,6 +58,30 @@ export default function ResultsLayout({
   const [selectedUnmatchedId, setSelectedUnmatchedId] = useState<string | null>(null);
   const [currentRegionIndex, setCurrentRegionIndex] = useState(0);
   const [viewerPage, setViewerPage] = useState<number | undefined>(undefined);
+  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "answered" | "unanswered" | "needs_review">("all");
+  
+  const [manualMappingFor, setManualMappingFor] = useState<ExtractedQuestion | null>(null);
+
+  // Filtered Questions
+  const filteredQuestions = useMemo(() => {
+    return questions.filter(q => {
+      // 1. Filter by status
+      const m = mappingByQuestionId.get(q.id);
+      const status = m?.status || "unanswered";
+      if (filter !== "all" && status !== filter) return false;
+      
+      // 2. Filter by search
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        if (!q.number.toLowerCase().includes(query) && !q.text.toLowerCase().includes(query)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [questions, mappingByQuestionId, filter, searchQuery]);
 
   // 3. Derived Selection
   let activeQuestion: ExtractedQuestion | undefined;
@@ -170,33 +191,46 @@ export default function ResultsLayout({
 
       <div className="flex flex-1 gap-4 lg:gap-6 overflow-hidden flex-col lg:flex-row">
         {/* Left: Questions Panel (approx 35-40%) */}
-        <div className="w-full lg:w-5/12 max-w-lg flex flex-col bg-white rounded-xl shadow-sm border border-veda-gray-200 overflow-hidden">
-          <div className="p-4 border-b border-veda-gray-200 bg-veda-gray-50 font-medium text-veda-dark flex justify-between items-center">
-            Questions
+        <div className="w-full lg:w-5/12 max-w-lg flex flex-col bg-white rounded-xl shadow-sm border border-veda-gray-200 overflow-hidden shrink-0">
+          <div className="p-4 border-b border-veda-gray-200 bg-veda-gray-50 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-veda-dark">Questions</span>
+              <div className="flex gap-2">
+                <select 
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value as any)}
+                  className="text-xs border-veda-gray-200 rounded-lg bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-veda-orange"
+                >
+                  <option value="all">All ({questions.length})</option>
+                  <option value="answered">Answered ({summary.answered})</option>
+                  <option value="unanswered">Unanswered ({summary.unanswered})</option>
+                  <option value="needs_review">Needs Review ({summary.needsReview})</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search size={14} className="text-veda-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search questions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-white border border-veda-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-veda-orange transition-all"
+              />
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-            {questions.map((q) => {
+            {filteredQuestions.length === 0 ? (
+              <div className="text-center py-8 text-veda-gray-500 text-sm">
+                No questions match the current filters.
+              </div>
+            ) : filteredQuestions.map((q) => {
               const m = mappingByQuestionId.get(q.id);
               const status = m?.status || "unanswered";
               const isSelected = selectedQuestionId === q.id;
-              
-              let statusLabel = status.replace("_", " ");
-              let statusColor = "";
-              let statusBg = "";
-              
-              if (status === "answered") {
-                statusLabel = "✓ Answered";
-                statusColor = "text-green-700";
-                statusBg = "bg-green-100";
-              } else if (status === "needs_review") {
-                statusLabel = "Needs Review";
-                statusColor = "text-amber-700";
-                statusBg = "bg-amber-100";
-              } else {
-                statusLabel = "Unanswered";
-                statusColor = "text-red-700";
-                statusBg = "bg-red-100";
-              }
 
               return (
                 <button 
@@ -231,11 +265,7 @@ export default function ResultsLayout({
 
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start mb-2">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${statusBg} ${statusColor}`}
-                          >
-                            {statusLabel}
-                          </span>
+                          <StatusBadge status={status} />
                         </div>
                         <p className="text-sm text-veda-dark font-medium leading-relaxed">
                           {q.text}
@@ -250,9 +280,17 @@ export default function ResultsLayout({
                                 <span>No answer was detected for this question.</span>
                               </div>
                             ) : status === "needs_review" ? (
-                              <div className="flex items-start gap-2 text-amber-600 text-sm mb-2">
-                                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                                <span>Possible matching answer shown. Mapping confidence is low.</span>
+                              <div className="flex flex-col gap-2 mb-3">
+                                <div className="flex items-start gap-2 text-amber-600 text-sm">
+                                  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                                  <span>Possible matching answer shown. Mapping confidence is low.</span>
+                                </div>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setManualMappingFor(q); }}
+                                  className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg w-fit transition-colors font-medium"
+                                >
+                                  Change Mapping
+                                </button>
                               </div>
                             ) : null}
 
@@ -319,12 +357,12 @@ export default function ResultsLayout({
                 </div>
                 <div className="space-y-3">
                   {unmatchedAnswers.map((ua) => {
-                    const ans = answerById.get(ua.answerId);
-                    const isSelected = selectedUnmatchedId === ua.answerId;
+                    const ans = ua.answer;
+                    const isSelected = selectedUnmatchedId === ans.answerId;
                     return (
                       <button
-                        key={ua.answerId}
-                        onClick={() => handleUnmatchedClick(ua.answerId)}
+                        key={ans.answerId}
+                        onClick={() => handleUnmatchedClick(ans.answerId)}
                         className={`
                           w-full text-left p-3 rounded-xl border transition-all duration-200
                           ${
@@ -336,16 +374,16 @@ export default function ResultsLayout({
                       >
                         <div className="flex justify-between items-start mb-1">
                           <div className="text-xs font-bold text-veda-orange uppercase">
-                            Detected Label: {ua.detectedQuestionLabel || "None"}
+                            Detected Label: {ans.detectedQuestionLabel || "None"}
                           </div>
-                          {isSelected && ans && (
+                          {isSelected && ans.regions && ans.regions.length > 0 && (
                             <div className="text-xs text-veda-orange">
-                              Page {ans.regions[0]?.page}
+                              Page {ans.regions[0].page}
                             </div>
                           )}
                         </div>
                         <div className="text-sm text-veda-gray-600 line-clamp-3">
-                          {ans?.text}
+                          {ans.text}
                         </div>
                       </button>
                     );
@@ -368,6 +406,21 @@ export default function ResultsLayout({
           />
         </div>
       </div>
+      
+      {/* Manual Mapping Dialog */}
+      {manualMappingFor && (
+        <ManualMappingDialog
+          questionId={manualMappingFor.id}
+          questionNumber={manualMappingFor.number}
+          questionText={manualMappingFor.text}
+          unmatchedAnswers={unmatchedAnswers}
+          onClose={() => setManualMappingFor(null)}
+          onSave={(answerId) => {
+            onUpdateMapping(manualMappingFor.id, answerId);
+            setManualMappingFor(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from typing import List, Dict, Any, Optional
+from utils.retry import with_retry
 
 VERIFIER_PROMPT = """You are verifying which exam question a student's handwritten answer belongs to.
 
@@ -63,13 +64,17 @@ class MappingVerifier:
             candidates_str=candidates_str
         )
         
-        try:
-            response = await self.model.generate_content_async(
-                prompt,
+        @with_retry(max_retries=5, initial_delay=40.0)
+        async def _call_model(content):
+            return await self.model.generate_content_async(
+                content,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json"
                 )
             )
+
+        try:
+            response = await _call_model(prompt)
             result_text = response.text
             
             # Safe JSON parsing

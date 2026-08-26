@@ -10,8 +10,8 @@ import ProcessingProgress from "@/components/ProcessingProgress";
 import QuestionList from "@/components/QuestionList";
 import AnswerDebugView from "@/components/AnswerDebugView";
 import ResultsLayout from "@/components/ResultsLayout";
-import { uploadAndProcess, pollUntilComplete, extractQuestions, extractAnswers } from "@/lib/api";
-import type { UploadedFile, ExtractedQuestion, ExtractedAnswer, ProcessingStatus, MappingResponse } from "@/lib/types";
+import { uploadAndProcess, pollUntilComplete, extractQuestions, extractAnswers, getAssessmentResults, updateMapping } from "@/lib/api";
+import type { UploadedFile, ExtractedQuestion, ExtractedAnswer, ProcessingStatus, AssessmentResults } from "@/lib/types";
 
 type AppScreen = "upload" | "processing" | "results";
 
@@ -31,7 +31,7 @@ export default function HomePage() {
   const [isExtractingFailed, setIsExtractingFailed] = useState(false);
   const [failedStep, setFailedStep] = useState<"questions" | "answers" | "mapping" | null>(null);
 
-  const [mappingResponse, setMappingResponse] = useState<MappingResponse | null>(null);
+  const [assessmentResults, setAssessmentResults] = useState<AssessmentResults | null>(null);
 
   // ── Derived ──
   const bothFilesUploaded = !!questionPaper && !!answerSheet;
@@ -118,11 +118,15 @@ export default function HomePage() {
       setFailedStep(null);
       
       try {
-        const response = await mapAnswers(currentJobId);
-        if (response && response.mappings) {
-          setMappingResponse(response);
-          setScreen("results");
-        }
+        await mapAnswers(currentJobId);
+        // Phase 6: Fetch consolidated results
+        setProcessingStage("preparing");
+        setProcessingProgress(95);
+        setProcessingMessage("Preparing results dashboard...");
+        
+        const results = await getAssessmentResults(currentJobId);
+        setAssessmentResults(results);
+        setScreen("results");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Mapping failed";
         setError(msg);
@@ -131,6 +135,19 @@ export default function HomePage() {
         setScreen("processing");
       }
     });
+  };
+
+  // ── Manual Mapping Update ──
+  const handleUpdateMapping = async (questionId: string, answerId: string | null) => {
+    if (!jobId) return;
+    try {
+      await updateMapping(jobId, questionId, answerId);
+      const results = await getAssessmentResults(jobId);
+      setAssessmentResults(results);
+    } catch (err) {
+      console.error("Failed to update mapping:", err);
+      alert("Failed to update mapping. Please try again.");
+    }
   };
 
   // ── Start Mapping (Phase 2 -> Phase 3) ──
@@ -353,14 +370,11 @@ export default function HomePage() {
         {/* ═══════════════════════════════════════════ */}
         {/* SCREEN 3: Results (Phase 6 Results Layout) */}
         {/* ═══════════════════════════════════════════ */}
-        {screen === "results" && extractedQuestions && extractedAnswers && mappingResponse && jobId && (
+        {screen === "results" && assessmentResults && jobId && (
           <main className="flex-1 flex overflow-hidden relative">
             <ResultsLayout 
-              jobId={jobId}
-              totalPages={answerSheet?.pages || 1}
-              mappingResponse={mappingResponse}
-              questions={extractedQuestions}
-              answers={extractedAnswers}
+              results={assessmentResults}
+              onUpdateMapping={handleUpdateMapping}
             />
           </main>
         )}
