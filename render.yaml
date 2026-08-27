@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: veda-backend
+    env: python
+    region: oregon
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QUESTION_EXTRACTION_MODEL
+        value: "gemini-1.5-flash"
+      - key: GRADING_MODEL
+        value: "gemini-1.5-flash"
+      
+  - type: web
+    name: veda-frontend
+    env: node
+    region: oregon
+    buildCommand: "cd frontend && npm install && npm run build"
+    startCommand: "cd frontend && npm run start"
+    envVars:
+      - key: NODE_VERSION
+        value: 18.18.0
+      - key: NEXT_PUBLIC_API_BASE_URL
+        fromService:
+          type: web
+          name: veda-backend
+          envVarKey: RENDER_EXTERNAL_URL
