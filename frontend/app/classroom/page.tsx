@@ -96,7 +96,9 @@ export default function ClassroomPage() {
           <div key={student.id} className="bg-white rounded-2xl border border-veda-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
-                <img src={student.avatar} alt={student.name} className="w-16 h-16 rounded-full border-2 border-veda-gray-100" />
+                <div className="w-16 h-16 rounded-full bg-veda-dark text-white flex items-center justify-center text-2xl font-bold shadow-sm">
+                  {student.name.charAt(0)}
+                </div>
                 <button className="text-veda-gray-400 hover:text-veda-dark transition-colors">
                   <MoreHorizontal size={20} />
                 </button>
