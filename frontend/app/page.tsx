@@ -96,6 +96,10 @@ export default function HomeDashboard() {
     }
   };
 
+  if (!data) {
+    return null;
+  }
+
   return (
     <div className="flex h-screen bg-veda-gray-100 font-sans">
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
