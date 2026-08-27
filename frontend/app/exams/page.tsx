@@ -8,7 +8,7 @@ import UploadCard from "@/components/UploadCard";
 import FilePreview from "@/components/FilePreview";
 import ProcessingProgress from "@/components/ProcessingProgress";
 import QuestionList from "@/components/QuestionList";
-import AnswerDebugView from "@/components/AnswerDebugView";
+
 import ResultsLayout from "@/components/ResultsLayout";
 import { uploadAndProcess, pollUntilComplete, extractQuestions, extractAnswers, getAssessmentResults, updateMapping, gradeAnswers } from "@/lib/api";
 import type { UploadedFile, ExtractedQuestion, ExtractedAnswer, ProcessingStatus, AssessmentResults } from "@/lib/types";

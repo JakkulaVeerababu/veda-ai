@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react";
-import HighlightOverlay from "./HighlightOverlay";
+
 import type { BoundingBox } from "@/lib/types";
 
 import { getAnswerPageUrl } from "@/lib/api";
@@ -174,13 +174,6 @@ export default function AnswerViewer({
             alt={`Answer sheet page ${currentPage}`}
             className="w-full h-auto block object-contain"
             draggable={false}
-          />
-
-          {/* Highlight overlays */}
-          <HighlightOverlay
-            regions={selectedRegions}
-            currentPage={currentPage}
-            questionLabel={selectedQuestionLabel}
           />
         </div>
       </div>

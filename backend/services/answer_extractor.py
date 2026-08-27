@@ -18,7 +18,7 @@ Identify each distinct answer block.
 
 Rules:
 1. Detect the written question label if present (e.g. 1, Q1, 3(a)). DO NOT treat internal bullet points or numbered lists (like 1), 2), i, ii) inside an answer as separate questions. An answer block should contain the entire response to a single question label.
-2. Extract the handwritten answer text as accurately as possible. Do not rewrite grammar.
+2. Extract ONLY the handwritten text. Do not rewrite grammar. DO NOT describe the visual appearance of diagrams or the image itself (e.g. do not say "The image shows..."). Just extract the literal text written by the student.
 3. Identify the EXACT bounding box occupied by the ENTIRE answer (including all its paragraphs, bullet points, and diagrams).
 4. Return the bounding box as an array of 4 integers [ymin, xmin, ymax, xmax] scaled to 1000 (e.g. [310, 120, 520, 850]).
 5. CRITICAL: ymin MUST be the exact top edge of the very first line of the answer. ymax MUST be the exact bottom edge of the very last line of the answer. Do not overlap with other answers!
@@ -26,21 +26,21 @@ Rules:
 7. Do not reorder answers. Maintain physical writing order.
 8. Do not invent question labels. If there is no label, return null for detectedQuestionLabel.
 9. Do not invent unreadable text. Ignore student metadata, headers, page numbers, and unrelated marks.
-10. If an answer contains a diagram or a table, include its area in the region.
+10. If an answer contains a diagram or a table, include its area in the region, but DO NOT describe it in the text.
 11. Return strict JSON only. Do not wrap in markdown fences.
 
-Return a JSON object with this EXACT structure:
+Return a JSON object matching this exact schema:
 {
   "answers": [
     {
-      "rawQuestionLabel": "Q. 3(a)",
-      "detectedQuestionLabel": "3(a)",
-      "text": "CNN is a convolutional neural network...",
-      "confidence": 0.93,
+      "rawQuestionLabel": "<string>",
+      "detectedQuestionLabel": "<string>",
+      "text": "<string>",
+      "confidence": <float>,
       "regions": [
         {
-          "page": 2,
-          "box_2d": [310, 120, 520, 850]
+          "page": <int>,
+          "box_2d": [<int>, <int>, <int>, <int>]
         }
       ]
     }
