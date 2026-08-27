@@ -38,6 +38,7 @@ export default function AssignmentsPage() {
         })
         .catch(err => {
           console.error(err);
+          setData({ active: [], graded: [] });
           setLoading(false);
         });
     });

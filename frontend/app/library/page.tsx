@@ -34,6 +34,7 @@ export default function LibraryPage() {
         })
         .catch(err => {
           console.error(err);
+          setData({ documents: [] });
           setLoading(false);
         });
     });
