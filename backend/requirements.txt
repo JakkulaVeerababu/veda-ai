@@ -8,3 +8,4 @@ pydantic
 python-dotenv
 google-generativeai
 tenacity
+numpy
