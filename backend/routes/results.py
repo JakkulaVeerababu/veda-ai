@@ -82,9 +82,10 @@ async def get_assessment_results(job_id: str):
     max_score = None
     accuracy = None
     if grades:
-        total_score = sum(g.score for g in grades)
-        max_score = sum(g.maxScore for g in grades)
-        accuracy = (total_score / max_score * 100) if max_score > 0 else 0
+        total_score = sum((g.score or 0) for g in grades)
+        # Max score should be the total marks of ALL questions in the exam, not just answered ones
+        max_score = sum((q.marks or 0) for q in questions)
+        accuracy = (total_score / max_score * 100) if max_score and max_score > 0 else 0
     
     summary = AssessmentSummary(
         totalQuestions=total_q,

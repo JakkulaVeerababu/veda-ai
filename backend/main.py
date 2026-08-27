@@ -18,7 +18,7 @@ from routes.library import router as library_router
 from routes.grading import router as grading_router
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Configure Gemini API if available
 import google.generativeai as genai

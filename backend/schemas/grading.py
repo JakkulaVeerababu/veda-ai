@@ -1,14 +1,14 @@
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
-GradeStatus = Literal["correct", "partially_correct", "incorrect", "unanswered", "needs_review", "not_graded"]
+GradeStatus = Literal["correct", "mostly_correct", "partially_correct", "incorrect", "unanswered", "needs_review", "not_graded"]
 
 class QuestionGrade(BaseModel):
     questionId: str
     answerId: Optional[str] = None
     status: GradeStatus
-    marksAwarded: Optional[float] = None
-    maxMarks: Optional[float] = None
+    score: Optional[float] = None
+    maxScore: Optional[float] = None
     confidence: Optional[float] = None
     feedback: Optional[str] = None
     reasonCodes: Optional[List[str]] = None

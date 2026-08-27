@@ -17,6 +17,7 @@ async def grade_job_answers(job_id: str, force: bool = False):
     
     questions_file = os.path.join(results_dir, "questions.json")
     mapping_file = os.path.join(results_dir, "mapping.json")
+    answers_file = os.path.join(results_dir, "answers.json")
     grades_cache_file = os.path.join(results_dir, "grades.json")
     
     if not os.path.exists(job_dir) or not os.path.exists(mapping_file):
@@ -39,6 +40,13 @@ async def grade_job_answers(job_id: str, force: bool = False):
         with open(mapping_file, "r", encoding="utf-8") as f:
             m_data = json.load(f)
             mappings = m_data.get("mappings", [])
+
+        # LOAD ANSWERS — this was the missing piece!
+        answers = []
+        if os.path.exists(answers_file):
+            with open(answers_file, "r", encoding="utf-8") as f:
+                a_data = json.load(f)
+                answers = a_data.get("answers", [])
             
     except Exception as e:
         print(f"Failed to load files for grading: {e}")
@@ -46,7 +54,7 @@ async def grade_job_answers(job_id: str, force: bool = False):
         
     # Grade Answers
     try:
-        grades = await grade_answers(mappings, questions)
+        grades = await grade_answers(mappings, questions, answers, job_id=job_id)
     except Exception as e:
         import traceback
         traceback.print_exc()

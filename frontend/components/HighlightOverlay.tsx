@@ -13,7 +13,7 @@ interface HighlightOverlayProps {
 export default function HighlightOverlay({
   regions,
   currentPage,
-  color = "rgba(34, 197, 94, 0.25)",
+  color = "rgba(34, 197, 94, 0.08)",
   questionLabel,
 }: HighlightOverlayProps) {
   // Filter regions for the current page
@@ -25,15 +25,17 @@ export default function HighlightOverlay({
     <>
       {pageRegions.map((region, idx) => (
         <div key={idx}>
-          {/* Highlight box */}
+          {/* Highlight box — light fill + strong green border */}
           <div
-            className="absolute border-2 border-green-500 rounded-sm transition-all duration-500 ease-out answer-highlight pointer-events-none"
+            className="absolute rounded-sm transition-all duration-500 ease-out pointer-events-none"
             style={{
               left: `${region.x * 100}%`,
               top: `${region.y * 100}%`,
               width: `${region.width * 100}%`,
               height: `${region.height * 100}%`,
               backgroundColor: color,
+              border: "2.5px solid rgba(34, 197, 94, 0.7)",
+              boxShadow: "0 0 0 1px rgba(34, 197, 94, 0.15), inset 0 0 0 1px rgba(34, 197, 94, 0.05)",
             }}
           />
           
@@ -47,7 +49,7 @@ export default function HighlightOverlay({
                 transform: "translate(-2px, -100%) translateY(-4px)",
               }}
             >
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-500 text-white text-xs font-bold shadow-sm">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-green-500 text-white text-xs font-bold shadow-md">
                 Q{questionLabel}
               </span>
             </div>

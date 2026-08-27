@@ -363,11 +363,14 @@ export default function HomePage() {
                     if (jobId) {
                       if (failedStep === "questions") runExtraction(jobId);
                       if (failedStep === "answers") runAnswerExtraction(jobId);
+                      if (failedStep === "mapping" || failedStep === "grading") runMapAnswers(jobId);
                     }
                   }}
                   className="px-6 py-2 bg-veda-dark text-white rounded-lg hover:bg-veda-gray-800 transition"
                 >
-                  {failedStep === "answers" ? "Retry Answer Extraction" : "Retry Extraction"}
+                  {failedStep === "answers" ? "Retry Answer Extraction" : 
+                   failedStep === "mapping" ? "Retry Mapping & Grading" : 
+                   "Retry Extraction"}
                 </button>
               </div>
             )}

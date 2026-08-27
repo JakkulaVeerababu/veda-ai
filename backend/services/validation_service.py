@@ -27,11 +27,11 @@ def validate_job_results(results: AssessmentResults):
         # 3. Grade marks validation
         if results.grades:
             for grade in results.grades:
-                if grade.marksAwarded is not None and grade.maxMarks is not None:
-                    if grade.marksAwarded < 0:
-                        raise HTTPException(status_code=500, detail=f"Negative score {grade.marksAwarded} for question {grade.questionId}")
-                    if grade.marksAwarded > grade.maxMarks:
-                        raise HTTPException(status_code=500, detail=f"Score {grade.marksAwarded} exceeds maxScore {grade.maxMarks} for question {grade.questionId}")
+                if grade.score is not None and grade.maxScore is not None:
+                    if grade.score < 0:
+                        raise HTTPException(status_code=500, detail=f"Negative score {grade.score} for question {grade.questionId}")
+                    if grade.score > grade.maxScore:
+                        raise HTTPException(status_code=500, detail=f"Score {grade.score} exceeds maxScore {grade.maxScore} for question {grade.questionId}")
                 
     # 4. Region validation
     for answer in results.answers:
