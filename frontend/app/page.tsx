@@ -58,6 +58,12 @@ export default function HomeDashboard() {
         })
         .catch((err) => {
           console.error("Failed to load dashboard data:", err);
+          // Set empty state instead of failing to render
+          setData({
+            stats: { totalStudents: 0, averageGrade: 0, assignmentsPending: 0, classesActive: 0 },
+            recentActivity: [],
+            upcomingTasks: []
+          });
           setLoading(false);
         });
     });
@@ -72,20 +78,6 @@ export default function HomeDashboard() {
           <div className="flex-1 flex flex-col items-center justify-center min-h-[500px]">
             <div className="w-10 h-10 border-4 border-veda-orange border-t-transparent rounded-full animate-spin"></div>
             <p className="mt-4 text-veda-gray-600 font-medium animate-pulse">Loading dashboard...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex h-screen bg-veda-gray-100 font-sans">
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)} />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Topbar title="Dashboard" />
-          <div className="flex-1 flex flex-col items-center justify-center min-h-[500px]">
-            <p className="mt-4 text-red-500 font-medium">Failed to load dashboard data. Please try again later.</p>
           </div>
         </div>
       </div>
