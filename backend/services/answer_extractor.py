@@ -17,9 +17,9 @@ ANSWER_EXTRACTION_PROMPT = """You are analyzing handwritten student answer-sheet
 Identify each distinct answer block.
 
 Rules:
-1. Detect the written question label if present (e.g. 1, Q1, 3(a)).
+1. Detect the written question label if present (e.g. 1, Q1, 3(a)). DO NOT treat internal bullet points or numbered lists (like 1), 2), i, ii) inside an answer as separate questions. An answer block should contain the entire response to a single question label.
 2. Extract the handwritten answer text as accurately as possible. Do not rewrite grammar.
-3. Identify the EXACT bounding box occupied by the answer.
+3. Identify the EXACT bounding box occupied by the ENTIRE answer (including all its paragraphs, bullet points, and diagrams).
 4. Return the bounding box as an array of 4 integers [ymin, xmin, ymax, xmax] scaled to 1000 (e.g. [310, 120, 520, 850]).
 5. CRITICAL: ymin MUST be the exact top edge of the very first line of the answer. ymax MUST be the exact bottom edge of the very last line of the answer. Do not overlap with other answers!
 6. If an answer continues across pages, return one answer with multiple regions.
@@ -234,24 +234,6 @@ class AnswerVisionService:
                     regions=regions
                 ))
                 
-        # Fill vertical gaps to prevent hallucinated early cutoffs
-        pages = {}
-        for ans in normalized_answers:
-            for r in ans.regions:
-                pages.setdefault(r.page, []).append(r)
-                
-        for page_num, page_regions in pages.items():
-            page_regions.sort(key=lambda r: r.y)
-            for i in range(len(page_regions) - 1):
-                curr_r = page_regions[i]
-                next_r = page_regions[i+1]
-                # Extend current region height down to just above the next region
-                new_bottom = next_r.y - 0.005
-                if new_bottom > curr_r.y:
-                    curr_r.height = min(1.0 - curr_r.y, new_bottom - curr_r.y)
-            # For the very last region on the page, extend it to the bottom
-            if page_regions:
-                last_r = page_regions[-1]
-                last_r.height = 1.0 - last_r.y - 0.01
+
 
         return normalized_answers
