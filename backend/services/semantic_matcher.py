@@ -1,28 +1,26 @@
 import os
 import json
 import numpy as np
+import asyncio
 import google.generativeai as genai
 from typing import List, Dict, Any
 
 class SemanticMatcher:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model_name = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is not configured")
+        self.model_name = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
+        if not self.model_name.startswith("models/"):
+            # Ensure it has the correct prefix, default if user provided old all-minilm name
+            self.model_name = "models/gemini-embedding-001"
             
-        genai.configure(api_key=self.api_key)
-        
     async def compute_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Compute embeddings for a list of texts in batch."""
         if not texts:
             return []
             
         try:
-            result = genai.embed_content(
+            result = await genai.embed_content_async(
                 model=self.model_name,
-                content=texts,
-                task_type="retrieval_document"
+                content=texts
             )
             return result['embedding']
         except Exception as e:
@@ -67,3 +65,4 @@ class SemanticMatcher:
         except Exception as e:
             print(f"Matrix embedding failed: {e}")
             return np.zeros((len(questions), len(answers)))
+

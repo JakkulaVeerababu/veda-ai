@@ -46,6 +46,14 @@ async def get_assessment_results(job_id: str):
             m_data = json.load(f)
             mappings = [QuestionAnswerMapping(**m) for m in m_data.get("mappings", [])]
             
+        grades_file = os.path.join(results_dir, "grades.json")
+        grades = None
+        if os.path.exists(grades_file):
+            from schemas.grading import QuestionGrade
+            with open(grades_file, "r", encoding="utf-8") as f:
+                g_data = json.load(f)
+                grades = [QuestionGrade(**g) for g in g_data.get("grades", [])]
+            
     except Exception as e:
         print(f"Failed to load result files: {e}")
         raise HTTPException(status_code=500, detail="Failed to load assessment results.")
@@ -53,8 +61,8 @@ async def get_assessment_results(job_id: str):
     # Compute unmatched answers
     mapped_answer_ids = set()
     for m in mappings:
-        if m.answerId:
-            mapped_answer_ids.add(m.answerId)
+        if m.answerIds:
+            mapped_answer_ids.update(m.answerIds)
             
     unmatched = []
     for ans in answers:
@@ -70,20 +78,37 @@ async def get_assessment_results(job_id: str):
     unanswered = sum(1 for m in mappings if m.status == "unanswered")
     needs_review = sum(1 for m in mappings if m.status == "needs_review")
     
+    total_score = None
+    max_score = None
+    accuracy = None
+    if grades:
+        total_score = sum(g.score for g in grades)
+        max_score = sum(g.maxScore for g in grades)
+        accuracy = (total_score / max_score * 100) if max_score > 0 else 0
+    
     summary = AssessmentSummary(
         totalQuestions=total_q,
         answered=answered,
         unanswered=unanswered,
         needsReview=needs_review,
-        unmatchedAnswers=len(unmatched)
+        unmatchedAnswers=len(unmatched),
+        totalScore=total_score,
+        maxScore=max_score,
+        accuracy=accuracy
     )
 
-    return AssessmentResults(
+    results = AssessmentResults(
         jobId=job_id,
         metadata=metadata,
         questions=questions,
         answers=answers,
         mappings=mappings,
         unmatchedAnswers=unmatched,
-        summary=summary
+        summary=summary,
+        grades=grades
     )
+    
+    from services.validation_service import validate_job_results
+    validate_job_results(results)
+
+    return results

@@ -9,9 +9,9 @@ from services.answer_mapper import AnswerMapperService
 
 @pytest.fixture(autouse=True)
 def mock_env_vars():
-    os.environ["GEMINI_API_KEY"] = "fake_key"
+    os.environ["OLLAMA_HOST"] = "http://localhost:11434"
     yield
-    del os.environ["GEMINI_API_KEY"]
+    del os.environ["OLLAMA_HOST"]
 
 @pytest.mark.asyncio
 async def test_exact_question_labels():

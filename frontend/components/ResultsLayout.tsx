@@ -21,7 +21,7 @@ export default function ResultsLayout({
   results,
   onUpdateMapping,
 }: ResultsLayoutProps) {
-  const { summary, mappings, unmatchedAnswers, questions, answers, jobId, metadata } = results;
+  const { summary, mappings, unmatchedAnswers, questions, answers, jobId, metadata, grades } = results;
   const totalPages = metadata.answerPageCount;
 
   // 2. Data Lookups
@@ -36,6 +36,14 @@ export default function ResultsLayout({
     mappings.forEach((m) => map.set(m.questionId, m));
     return map;
   }, [mappings]);
+
+  const gradeByQuestionId = useMemo(() => {
+    const map = new Map<string, any>();
+    if (grades) {
+      grades.forEach((g) => map.set(g.questionId, g));
+    }
+    return map;
+  }, [grades]);
 
   const realTotalPages = useMemo(() => {
     let max = totalPages;
@@ -168,6 +176,17 @@ export default function ResultsLayout({
         <div>
           <h2 className="text-lg font-bold text-veda-dark">Assessment Mapping Complete</h2>
           <p className="text-sm text-veda-gray-500">Select a question to view its exact answer location.</p>
+          
+          {summary.totalScore !== undefined && summary.maxScore !== undefined && (
+            <div className="mt-2 flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-sm font-semibold text-green-700">
+                Grade: {summary.totalScore} / {summary.maxScore}
+              </span>
+              <span className="text-sm font-medium text-veda-gray-600">
+                Accuracy: {summary.accuracy?.toFixed(1)}%
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex gap-6">
           <div className="flex flex-col">
@@ -198,7 +217,7 @@ export default function ResultsLayout({
               <div className="flex gap-2">
                 <select 
                   value={filter}
-                  onChange={(e) => setFilter(e.target.value as any)}
+                  onChange={(e) => setFilter(e.target.value as "all" | "answered" | "unanswered" | "needs_review")}
                   className="text-xs border-veda-gray-200 rounded-lg bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-veda-orange"
                 >
                   <option value="all">All ({questions.length})</option>
@@ -270,6 +289,13 @@ export default function ResultsLayout({
                         <p className="text-sm text-veda-dark font-medium leading-relaxed">
                           {q.text}
                         </p>
+                        
+                        {/* Always show grade summary if it exists for this question */}
+                        {gradeByQuestionId.get(q.id) && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 border border-green-200 text-xs font-semibold text-green-700">
+                            Score: {gradeByQuestionId.get(q.id).score} / {gradeByQuestionId.get(q.id).maxScore}
+                          </div>
+                        )}
 
                         {/* If this is selected, show extra details */}
                         {isSelected && (
@@ -293,6 +319,20 @@ export default function ResultsLayout({
                                 </button>
                               </div>
                             ) : null}
+
+                            {/* Show detailed AI feedback if graded */}
+                            {gradeByQuestionId.get(q.id) && (
+                              <div className="mb-3 bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm">
+                                <div className="flex justify-between items-center mb-1">
+                                  <div className="font-semibold text-xs text-blue-700 uppercase tracking-wide">
+                                    AI Feedback ({gradeByQuestionId.get(q.id).status.replace("_", " ")})
+                                  </div>
+                                </div>
+                                <p className="text-blue-900 leading-relaxed text-sm">
+                                  {gradeByQuestionId.get(q.id).feedback}
+                                </p>
+                              </div>
+                            )}
 
                             {activeAnswer && (
                               <div className="bg-white border border-veda-gray-200 p-3 rounded-lg text-sm text-veda-gray-600">

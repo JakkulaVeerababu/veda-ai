@@ -19,13 +19,15 @@ SEMANTIC_AUTO_MATCH_THRESHOLD = 0.82
 SEMANTIC_REVIEW_THRESHOLD = 0.60
 CANDIDATE_MARGIN_THRESHOLD = 0.08
 
+import re
+
 class AnswerMapperService:
     def __init__(self):
         self.semantic_matcher = SemanticMatcher()
         self.mapping_verifier = MappingVerifier()
         
     def _normalize_label(self, label: Optional[str]) -> Optional[str]:
-        """Normalizes a label for matching."""
+        """Normalizes a label for matching. Converts '3(a)' and '3.a' to '3a'."""
         if not label:
             return None
         l = label.strip()
@@ -33,7 +35,10 @@ class AnswerMapperService:
             if l.lower().startswith(prefix.lower()):
                 l = l[len(prefix):].strip()
                 break
-        return l.strip(". ").lower().replace(" ", "")
+        
+        # Remove spaces, dots, and parenthesis to unify '3(a)' and '3.a' -> '3a'
+        l = re.sub(r'[\s\.\(\)]', '', l).lower()
+        return l
 
     async def map_answers(
         self, 

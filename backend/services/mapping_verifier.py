@@ -2,7 +2,6 @@ import os
 import json
 import google.generativeai as genai
 from typing import List, Dict, Any, Optional
-from utils.retry import with_retry
 
 VERIFIER_PROMPT = """You are verifying which exam question a student's handwritten answer belongs to.
 
@@ -32,13 +31,8 @@ Return JSON in this EXACT format:
 
 class MappingVerifier:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model_name = os.getenv("VERIFIER_MODEL", "gemini-3.6-flash")
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is not configured")
-            
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(self.model_name)
+        model_name = os.getenv("VERIFICATION_MODEL", "gemini-3.6-flash")
+        self.model = genai.GenerativeModel(model_name)
         
     async def verify_mapping(
         self,
@@ -47,7 +41,7 @@ class MappingVerifier:
         candidates: List[Dict[str, str]]
     ) -> Dict[str, Any]:
         """
-        Uses an LLM to verify an ambiguous mapping.
+        Uses Gemini to verify an ambiguous mapping.
         candidates should be a list of dicts with 'id' and 'text'.
         """
         if not candidates:
@@ -64,20 +58,14 @@ class MappingVerifier:
             candidates_str=candidates_str
         )
         
-        @with_retry(max_retries=5, initial_delay=40.0)
-        async def _call_model(content):
-            return await self.model.generate_content_async(
-                content,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json"
-                )
-            )
-
         try:
-            response = await _call_model(prompt)
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=genai.types.GenerationConfig(response_mime_type="application/json")
+            )
             result_text = response.text
             
-            # Safe JSON parsing
+            # Safe JSON parsing (in case mime type enforcement fails slightly)
             if result_text.startswith("```json"):
                 result_text = result_text.replace("```json\n", "", 1)
                 if result_text.endswith("```"):

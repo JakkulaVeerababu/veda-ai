@@ -1,11 +1,10 @@
 """
-Grading Service — Uses Gemini Flash to grade student answers and provide feedback.
+Grading Service — Uses Local LLM to grade student answers and provide feedback.
 """
+import os
 import json
-import google.generativeai as genai
+import ollama
 from typing import List, Dict, Any
-from utils.retry import with_retry
-
 
 GRADING_PROMPT = """You are a fair and helpful exam grader. Grade each student answer below.
 
@@ -45,18 +44,10 @@ RULES:
 async def grade_answers(
     mappings: List[Dict[str, Any]],
     questions: List[Dict[str, Any]],
-    model: genai.GenerativeModel
+    client_or_model=None  # Maintained for signature compatibility
 ) -> List[Dict[str, Any]]:
     """
-    Grade all answered questions using Gemini Flash.
-    
-    Args:
-        mappings: Answer mappings (only answered ones will be graded)
-        questions: Original question list (for marks info)
-        model: Configured Gemini model instance
-        
-    Returns:
-        List of grading results
+    Grade all answered questions using local Ollama or Gemini.
     """
     # Build question marks lookup
     marks_lookup = {q["id"]: q.get("marks") for q in questions}
@@ -81,27 +72,53 @@ async def grade_answers(
     qa_json = json.dumps(qa_pairs, indent=2)
     prompt = GRADING_PROMPT.format(qa_pairs=qa_json)
     
-    @with_retry(max_retries=5, initial_delay=40.0)
-    async def _call_model(prompt_text):
-        return await model.generate_content_async(
-            prompt_text,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",
-                temperature=0.2,
-            )
-        )
-
+    model_name = os.getenv("GRADING_MODEL", "llama3")
+    
+    result_text = None
     try:
-        response = await _call_model(prompt)
-        
-        result = json.loads(response.text)
+        if model_name.startswith("gemini"):
+            import google.generativeai as genai
+            model = genai.GenerativeModel(model_name)
+            response = await model.generate_content_async(prompt)
+            result_text = response.text
+        else:
+            import ollama
+            host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            client = ollama.AsyncClient(host=host)
+            response = await client.chat(
+                model=model_name,
+                messages=[{'role': 'user', 'content': prompt}],
+                format='json'
+            )
+            result_text = response['message']['content']
+            
+        # Clean markdown formatting if present
+        if result_text.startswith("```json"):
+            result_text = result_text.replace("```json\n", "", 1)
+        elif result_text.startswith("```"):
+            result_text = result_text.replace("```\n", "", 1)
+        if result_text.endswith("```"):
+            result_text = result_text[:-3]
+            
+        import re
+        # Attempt to extract JSON if there's garbage text around it
+        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        if json_match:
+            result_text = json_match.group(0)
+
+        result = json.loads(result_text)
         grades = result.get("grades", [])
         
         # Validate and normalize
         normalized = []
         for g in grades:
             max_score = g.get("maxScore", 5)
-            score = min(g.get("score", 0), max_score)
+            # Safe parsing for score
+            try:
+                score = float(g.get("score", 0))
+            except:
+                score = 0
+            score = min(score, max_score)
             normalized.append({
                 "questionId": str(g.get("questionId", "")),
                 "score": max(0, score),
@@ -113,5 +130,9 @@ async def grade_answers(
         return normalized
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Grading failed: {e}")
+        if result_text:
+            print(f"Raw output was: {result_text}")
         return []

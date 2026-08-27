@@ -7,7 +7,6 @@ import traceback
 from typing import Dict, Any
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
-import google.generativeai as genai
 
 from services.pdf_service import convert_to_images
 from schemas.assessment import (
@@ -64,9 +63,9 @@ async def process_assessment(
     
     # Check file sizes
     if len(qp_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(400, f"Question paper exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit")
+        raise HTTPException(413, f"Question paper exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit")
     if len(as_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(400, f"Answer sheet exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit")
+        raise HTTPException(413, f"Answer sheet exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit")
     
     # Create task
     task_id = str(uuid.uuid4())

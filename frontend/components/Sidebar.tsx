@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutGrid,
   GraduationCap,
@@ -21,15 +23,16 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { icon: LayoutGrid, label: "Home", active: false },
-  { icon: GraduationCap, label: "My Classroom", active: false },
-  { icon: ClipboardList, label: "Assignments", active: false },
-  { icon: FileText, label: "Exams", active: true },
-  { icon: Clock, label: "My Library", active: false },
+  { icon: LayoutGrid, label: "Home", path: "/" },
+  { icon: GraduationCap, label: "My Classroom", path: "/classroom" },
+  { icon: ClipboardList, label: "Assignments", path: "/assignments" },
+  { icon: FileText, label: "Exams", path: "/exams" },
+  { icon: Clock, label: "My Library", path: "/library" },
 ];
 
 export default function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
     <>
@@ -127,26 +130,31 @@ export default function Sidebar({ collapsed = false, onToggleCollapse }: Sidebar
         {/* Navigation Items */}
         <nav className="flex-1 px-3">
           <ul className="space-y-1">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <button
-                  className={`
-                    w-full flex items-center gap-3 rounded-xl transition-colors
-                    ${collapsed ? "justify-center p-3" : "px-4 py-3"}
-                    ${
-                      item.active
-                        ? "bg-veda-gray-100 text-veda-dark font-semibold"
-                        : "text-veda-gray-500 hover:bg-veda-gray-50 hover:text-veda-gray-700"
-                    }
-                  `}
-                >
-                  <item.icon size={20} className="shrink-0" />
-                  {!collapsed && (
-                    <span className="text-sm">{item.label}</span>
-                  )}
-                </button>
-              </li>
-            ))}
+            {navItems.map((item) => {
+              const isActive = pathname === item.path;
+              return (
+                <li key={item.label}>
+                  <Link href={item.path} onClick={() => setMobileOpen(false)}>
+                    <div
+                      className={`
+                        w-full flex items-center gap-3 rounded-xl transition-colors cursor-pointer
+                        ${collapsed ? "justify-center p-3" : "px-4 py-3"}
+                        ${
+                          isActive
+                            ? "bg-veda-gray-100 text-veda-dark font-semibold"
+                            : "text-veda-gray-500 hover:bg-veda-gray-50 hover:text-veda-gray-700"
+                        }
+                      `}
+                    >
+                      <item.icon size={20} className="shrink-0" />
+                      {!collapsed && (
+                        <span className="text-sm">{item.label}</span>
+                      )}
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 

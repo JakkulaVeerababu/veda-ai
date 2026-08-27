@@ -5,8 +5,8 @@ from schemas.questions import ExtractedQuestion
 def _normalize_number(raw_num: str) -> str:
     """Normalize question numbers: Q.1 -> 1, 1 (a) -> 1(a), etc."""
     num = raw_num.strip()
-    # Remove leading Q, Q., Question
-    num = re.sub(r'^(Q|Question|Q\.)\s*', '', num, flags=re.IGNORECASE)
+    # Remove leading Question, Q., Q
+    num = re.sub(r'^(Question|Q\.|Q)\s*', '', num, flags=re.IGNORECASE)
     # Remove trailing dot or closing parenthesis if standalone like "1." or "1)" 
     # but not if it's "1(a)"
     if re.match(r'^\d+[\.\)]$', num):

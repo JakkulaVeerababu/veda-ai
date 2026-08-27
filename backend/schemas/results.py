@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from schemas.questions import ExtractedQuestion
 from schemas.answers import ExtractedAnswer
 from schemas.mapping import QuestionAnswerMapping
+from schemas.grading import QuestionGrade
 
 class AssessmentSummary(BaseModel):
     totalQuestions: int
@@ -10,6 +11,9 @@ class AssessmentSummary(BaseModel):
     unanswered: int
     needsReview: int
     unmatchedAnswers: int
+    totalScore: Optional[float] = None
+    maxScore: Optional[float] = None
+    accuracy: Optional[float] = None
 
 class DocumentMetadata(BaseModel):
     jobId: str
@@ -28,3 +32,4 @@ class AssessmentResults(BaseModel):
     mappings: List[QuestionAnswerMapping]
     unmatchedAnswers: List[UnmatchedAnswer]
     summary: AssessmentSummary
+    grades: Optional[List[QuestionGrade]] = None

@@ -1,11 +1,11 @@
 """
-Question Extractor Service — Uses Vision AI to extract questions from question paper images.
+Question Extractor Service — Uses Vision AI (Ollama) to extract questions from question paper images.
 """
 import os
 import json
-import base64
-import google.generativeai as genai
+import ollama
 from typing import List, Dict, Any
+import re
 
 from schemas.questions import ExtractedQuestion
 from services.question_normalizer import normalize_questions
@@ -44,61 +44,137 @@ Return a JSON object with this EXACT structure:
 
 class VisionService:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model_name = os.getenv("QUESTION_EXTRACTION_MODEL", "gemini-3.6-flash")
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is not configured")
-            
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(self.model_name)
+        self.model_name = os.getenv("QUESTION_EXTRACTION_MODEL", "llava")
+        self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.mock_mode = os.getenv("MOCK_AI_MODE", "false").lower() == "true"
         
+        if not self.model_name.startswith("gemini"):
+            self.client = ollama.AsyncClient(host=self.host)
+        else:
+            import google.generativeai as genai
+            # Initialize with the api key if needed, or it will use environment var GEMINI_API_KEY automatically
+            
     async def extract_questions(self, page_images_b64: List[str]) -> List[ExtractedQuestion]:
         """
-        Extract all questions from question paper images using Vision AI.
+        Extract all questions from question paper images using Local Vision AI or Gemini.
         Processes in batches if necessary.
         """
+        if self.mock_mode:
+            print("MOCK_AI_MODE is enabled. Returning mock questions.")
+            import asyncio
+            await asyncio.sleep(2) # Simulate processing time
+            mock_data = [
+                {"number": "1", "text": "What is the capital of France?", "page": 1, "sourcePageEnd": 1, "section": "A", "marks": 2, "confidence": 0.99},
+                {"number": "2", "text": "Explain the theory of relativity.", "page": 1, "sourcePageEnd": 1, "section": "A", "marks": 5, "confidence": 0.98},
+                {"number": "3(a)", "text": "Derive the quadratic formula.", "page": 1, "sourcePageEnd": 1, "section": "B", "marks": 3, "confidence": 0.95},
+                {"number": "3(b)", "text": "Solve for x: x^2 - 4x + 4 = 0.", "page": 1, "sourcePageEnd": 1, "section": "B", "marks": 2, "confidence": 0.99},
+            ]
+            return [ExtractedQuestion(**q) for q in mock_data]
+
         all_raw_questions = []
         
-        content = [QUESTION_EXTRACTION_PROMPT]
+        prompt = QUESTION_EXTRACTION_PROMPT
         
-        for i, img_b64 in enumerate(page_images_b64):
-            page_num = i + 1
-            content.append(f"--- IMAGE {page_num} = printed page {page_num} ---")
-            content.append({
-                "mime_type": "image/png",
-                "data": base64.b64decode(img_b64)
-            })
-            
-        @with_retry(max_retries=5, initial_delay=40.0)
-        async def _call_model(content):
-            return await self.model.generate_content_async(
-                content,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json"
+        @with_retry(max_retries=3, initial_delay=5.0)
+        async def _call_model(content, images):
+            if self.model_name.startswith("gemini"):
+                import google.generativeai as genai
+                from PIL import Image
+                import io
+                import base64
+                
+                model = genai.GenerativeModel(self.model_name)
+                
+                # Convert b64 images to PIL images
+                pil_images = []
+                for b64 in images:
+                    image_data = base64.b64decode(b64)
+                    image = Image.open(io.BytesIO(image_data))
+                    pil_images.append(image)
+                
+                response = await model.generate_content_async([content] + pil_images)
+                
+                class MockOllamaResponse:
+                    def __init__(self, text):
+                        self.message = type("Message", (), {"content": text})
+                
+                return MockOllamaResponse(response.text)
+            else:
+                return await self.client.chat(
+                    model=self.model_name,
+                    messages=[{
+                        'role': 'user',
+                        'content': content,
+                        'images': images
+                    }],
+                    format='json'
                 )
-            )
 
+        result_text = None
         try:
-            response = await _call_model(content)
-            
-            result_text = response.text
+            # We pass the images list directly to Ollama
+            response = await _call_model(prompt, page_images_b64)
+            if hasattr(response, 'message'):
+                result_text = response.message.content
+            else:
+                result_text = response['message']['content']
             
             # Safe JSON parsing
+            result_text = result_text.strip()
+            # If Ollama still outputs markdown fences despite format='json'
             if result_text.startswith("```json"):
                 result_text = result_text.replace("```json\n", "", 1)
-                if result_text.endswith("```"):
-                    result_text = result_text[:-3]
             elif result_text.startswith("```"):
                 result_text = result_text.replace("```\n", "", 1)
-                if result_text.endswith("```"):
-                    result_text = result_text[:-3]
+            if result_text.endswith("```"):
+                result_text = result_text[:-3]
+                
+            # Attempt to extract JSON if there's garbage text around it
+            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+            if json_match:
+                result_text = json_match.group(0)
+                
+            # Fix missing commas between objects
+            result_text = re.sub(r'\}\s*\{', '}, {', result_text)
+            # Fix trailing commas
+            result_text = re.sub(r',\s*\}', '}', result_text)
+            result_text = re.sub(r',\s*\]', ']', result_text)
+                
+            try:
+                result = json.loads(result_text)
+            except json.JSONDecodeError as jde:
+                print(f"Initial JSON decode failed, attempting aggressive repair: {jde}")
+                # Aggressive fallback: extract individual objects and build the array manually
+                objects = []
+                # Find all {} blocks that do not contain nested {}
+                for match in re.finditer(r'\{[^{}]*\}', result_text):
+                    try:
+                        obj_str = match.group(0)
+                        # Remove trailing commas inside the object string if any
+                        obj_str = re.sub(r',\s*\}', '}', obj_str)
+                        parsed = json.loads(obj_str)
+                        if 'number' in parsed:
+                            objects.append(parsed)
+                    except Exception as parse_e:
+                        print(f"Failed to parse inner block: {parse_e}")
+                        pass
+                
+                if objects:
+                    result = {"questions": objects}
+                else:
+                    raise jde
                     
-            result = json.loads(result_text)
             all_raw_questions.extend(result.get("questions", []))
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Extraction error: {e}")
-            raise ValueError("Question extraction failed during AI model call.")
+            print("--- MALFORMED JSON START ---")
+            if result_text is not None:
+                print(result_text)
+            print("--- MALFORMED JSON END ---")
+            raise ValueError(f"Question extraction failed during AI model call: {e}")
             
         # Normalize and deduplicate
         normalized = normalize_questions(all_raw_questions)

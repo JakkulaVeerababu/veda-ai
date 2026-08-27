@@ -98,7 +98,7 @@ async def update_mapping(job_id: str, question_id: str, request: ManualMappingRe
         found = False
         for m in mapping_response.mappings:
             if m.questionId == question_id:
-                m.answerId = request.answerId
+                m.answerIds = [request.answerId] if request.answerId else []
                 m.status = "answered" if request.answerId else "unanswered"
                 m.confidence = 1.0  # Manual override
                 found = True
