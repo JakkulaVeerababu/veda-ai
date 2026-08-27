@@ -91,6 +91,17 @@ export default function ClassroomPage() {
       </div>
 
       {/* Students Grid */}
+      {students.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-veda-gray-200 rounded-2xl bg-veda-gray-50/50">
+          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-sm mb-6">
+            <Search className="text-veda-gray-400" size={32} />
+          </div>
+          <h3 className="text-xl font-bold text-veda-dark mb-2">No students yet</h3>
+          <p className="text-veda-gray-500 max-w-md mx-auto mb-6">
+            Your classroom roster is completely clean. Click "Add Student" in the top right to start building your class.
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredStudents.map(student => (
           <div key={student.id} className="bg-white rounded-2xl border border-veda-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
@@ -136,6 +147,7 @@ export default function ClassroomPage() {
           </div>
         ))}
       </div>
+      )}
           </div>
         </main>
       </div>
