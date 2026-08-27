@@ -40,17 +40,18 @@ export default function HomeDashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    // Fetch mock data from our new backend API
-    fetch("http://localhost:8000/api/dashboard/")
-      .then((res) => res.json())
-      .then((json) => {
-        setData(json);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load dashboard data:", err);
-        setLoading(false);
-      });
+    import("@/lib/api").then(({ API_BASE_URL }) => {
+      fetch(`${API_BASE_URL}/api/dashboard/`)
+        .then((res) => res.json())
+        .then((json) => {
+          setData(json);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error("Failed to load dashboard data:", err);
+          setLoading(false);
+        });
+    });
   }, []);
 
   if (loading || !data) {
