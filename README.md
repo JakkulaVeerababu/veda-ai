@@ -13,7 +13,7 @@
 
 <br />
 
-## 📖 Overview
+## Overview
 
 **Veda AI** is an intelligent, scalable assessment platform designed to automate the grading process for handwritten exams. By leveraging state-of-the-art Vision-Language Models (VLMs) and structural mapping, Veda AI accurately extracts student answers from scanned exam papers and evaluates them against custom rubrics.
 
@@ -21,17 +21,17 @@ Built with a robust **Next.js** frontend and a high-performance **FastAPI** back
 
 ---
 
-## ✨ Core Features
+## Core Features
 
-- 🧠 **AI-Powered Handwritten Extraction**: Utilizes advanced vision models to accurately transcribe and isolate handwritten text from scanned documents.
-- 🎯 **Automated Rubric Grading**: Semantically evaluates answers against teacher-defined rubrics, assigning scores and detailed feedback.
-- 📊 **Smart Bounding Box Mapping**: Automatically detects and maps answers to their respective question numbers using intelligent heuristic parsing.
-- 🚀 **Real-Time Processing Pipeline**: Features a reactive dashboard indicating real-time extraction and grading progress.
-- 🎨 **Modern Interface**: A clean, highly responsive UI built with Tailwind CSS, featuring dark mode optimization.
+- **AI-Powered Handwritten Extraction**: Utilizes advanced vision models to accurately transcribe and isolate handwritten text from scanned documents.
+- **Automated Rubric Grading**: Semantically evaluates answers against teacher-defined rubrics, assigning scores and detailed feedback.
+- **Smart Bounding Box Mapping**: Automatically detects and maps answers to their respective question numbers using intelligent heuristic parsing.
+- **Real-Time Processing Pipeline**: Features a reactive dashboard indicating real-time extraction and grading progress.
+- **Modern Interface**: A clean, highly responsive UI built with Tailwind CSS, featuring dark mode optimization.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 The repository is structured as a monorepo containing both the frontend client and the backend processing services.
 
@@ -54,7 +54,7 @@ veda-ai/
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -96,6 +96,6 @@ veda-ai/
 
 ---
 
-## 🛡️ License
+## License
 
 Copyright © 2026 Veerababu Jakkula. All rights reserved.
