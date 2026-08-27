@@ -29,7 +29,7 @@ export default function HomePage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isExtractingFailed, setIsExtractingFailed] = useState(false);
-  const [failedStep, setFailedStep] = useState<"questions" | "answers" | "mapping" | null>(null);
+  const [failedStep, setFailedStep] = useState<"questions" | "answers" | "mapping" | "grading" | null>(null);
 
   const [assessmentResults, setAssessmentResults] = useState<AssessmentResults | null>(null);
 
