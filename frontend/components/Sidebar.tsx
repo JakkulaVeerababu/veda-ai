@@ -23,7 +23,7 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { icon: LayoutGrid, label: "Home", path: "/dashboard" },
+  { icon: LayoutGrid, label: "Home", path: "/" },
   { icon: GraduationCap, label: "My Classroom", path: "/classroom" },
   { icon: ClipboardList, label: "Assignments", path: "/assignments" },
   { icon: FileText, label: "Exams", path: "/exams" },
