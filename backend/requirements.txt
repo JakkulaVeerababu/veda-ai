@@ -6,3 +6,5 @@ pymupdf
 Pillow
 pydantic
 python-dotenv
+google-generativeai
+tenacity
