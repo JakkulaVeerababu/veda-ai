@@ -52,10 +52,10 @@ export default function Topbar({ title = "Exams", showBack = true, onBack }: Top
         {/* User avatar */}
         <div className="flex items-center gap-2 ml-2 pl-2 border-l border-veda-gray-200">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-veda-orange to-amber-400 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">MR</span>
+            <span className="text-white text-xs font-bold">VJ</span>
           </div>
           <span className="text-sm font-medium text-veda-dark hidden sm:block">
-            Madhur Rastogi
+            Veerababu Jakkula
           </span>
           <ChevronDown size={14} className="text-veda-gray-400 hidden sm:block" />
         </div>
