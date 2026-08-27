@@ -120,7 +120,7 @@ async def grade_answers(
             "images": answer_images
         })
     
-    model_name = os.getenv("GRADING_MODEL", "gemini-3.6-flash")
+    model_name = os.getenv("GRADING_MODEL", "gemini-1.5-flash")
     
     result_text = None
     try:

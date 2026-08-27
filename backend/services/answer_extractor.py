@@ -50,7 +50,7 @@ Return a JSON object matching this exact schema:
 
 class AnswerVisionService:
     def __init__(self):
-        self.model_name = os.getenv("ANSWER_EXTRACTION_MODEL", "llava")
+        self.model_name = os.getenv("ANSWER_EXTRACTION_MODEL", "gemini-1.5-flash")
         self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self.mock_mode = os.getenv("MOCK_AI_MODE", "false").lower() == "true"
         
