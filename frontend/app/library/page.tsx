@@ -95,61 +95,69 @@ export default function LibraryPage() {
       </div>
 
       {/* Document List */}
-      <div className="bg-white rounded-2xl border border-veda-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-veda-gray-50 border-b border-veda-gray-200 text-xs uppercase tracking-wider text-veda-gray-500 font-semibold">
-              <th className="px-6 py-4">Name</th>
-              <th className="px-6 py-4 hidden md:table-cell">Type</th>
-              <th className="px-6 py-4 hidden sm:table-cell">Date Added</th>
-              <th className="px-6 py-4">Size</th>
-              <th className="px-6 py-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-veda-gray-100">
-            {filteredDocs.map(doc => (
-              <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
-                      {getDocIcon(doc.type)}
+      {data.documents.length === 0 ? (
+        <div className="py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-veda-gray-200 rounded-2xl bg-veda-gray-50/50">
+          <Folder className="text-veda-gray-300 mb-4" size={48} />
+          <p className="text-xl font-bold text-veda-dark mb-2">Your library is empty</p>
+          <p className="text-veda-gray-500 max-w-md">Upload your rubrics, templates, and past exams to access them easily during grading.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-veda-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-veda-gray-50 border-b border-veda-gray-200 text-xs uppercase tracking-wider text-veda-gray-500 font-semibold">
+                <th className="px-6 py-4">Name</th>
+                <th className="px-6 py-4 hidden md:table-cell">Type</th>
+                <th className="px-6 py-4 hidden sm:table-cell">Date Added</th>
+                <th className="px-6 py-4">Size</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-veda-gray-100">
+              {filteredDocs.map(doc => (
+                <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
+                        {getDocIcon(doc.type)}
+                      </div>
+                      <span className="font-semibold text-veda-dark">{doc.title}</span>
                     </div>
-                    <span className="font-semibold text-veda-dark">{doc.title}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 hidden md:table-cell">
-                  <span className="px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 text-xs font-semibold">
-                    {doc.type}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-veda-gray-500 text-sm hidden sm:table-cell">
-                  {doc.date}
-                </td>
-                <td className="px-6 py-4 text-veda-gray-500 text-sm">
-                  {doc.size}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-2 text-veda-gray-500 hover:text-veda-dark hover:bg-veda-gray-100 rounded-lg transition-colors">
-                      <Download size={18} />
-                    </button>
-                    <button className="p-2 text-veda-gray-500 hover:text-veda-dark hover:bg-veda-gray-100 rounded-lg transition-colors">
-                      <MoreVertical size={18} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredDocs.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-veda-gray-500">
-                  No documents found matching &quot;{search}&quot;
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </td>
+                  <td className="px-6 py-4 hidden md:table-cell">
+                    <span className="px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 text-xs font-semibold">
+                      {doc.type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-veda-gray-500 text-sm hidden sm:table-cell">
+                    {doc.date}
+                  </td>
+                  <td className="px-6 py-4 text-veda-gray-500 text-sm">
+                    {doc.size}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="p-2 text-veda-gray-500 hover:text-veda-dark hover:bg-veda-gray-100 rounded-lg transition-colors">
+                        <Download size={18} />
+                      </button>
+                      <button className="p-2 text-veda-gray-500 hover:text-veda-dark hover:bg-veda-gray-100 rounded-lg transition-colors">
+                        <MoreVertical size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredDocs.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-veda-gray-500">
+                    No documents found matching &quot;{search}&quot;
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
           </div>
         </main>
       </div>
