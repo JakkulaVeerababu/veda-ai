@@ -253,7 +253,7 @@ function QuestionsPanel({ items, open, setOpen, toggleAll, allOpen }: { items: Q
             key={question.id}
             question={question}
             open={open.has(question.id)}
-            onToggle={() => setOpen((current) => {
+            onToggle={() => setOpen((current: Set<string>) => {
               const next = new Set(current);
               next.has(question.id) ? next.delete(question.id) : next.add(question.id);
               return next;
@@ -373,7 +373,7 @@ export default function App() {
 
       // Step 2: Poll until document preparation is complete
       const finalStatus = await pollUntilComplete(taskId, () => {});
-      const jid = finalStatus.result?.jobId || (finalStatus as any).result?.jobId;
+      const jid = (finalStatus as any).result?.jobId;
       if (!jid) throw new Error("No jobId returned from processing");
       setJobId(jid);
 
