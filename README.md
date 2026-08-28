@@ -1,9 +1,8 @@
 <div align="center">
-  <img src="frontend/public/teacher-avatar.jpg" alt="Logo" width="80" height="80" style="border-radius: 50%;">
+  <h1>Veda AI</h1>
   
-  # Veda AI
-  
-  **Next-Generation AI-Powered Grading & Assessment Platform**
+  <strong>Next-Generation AI-Powered Grading & Assessment Platform</strong>
+  <br /><br />
 
   [![Next.js](https://img.shields.io/badge/Next.js-15.0-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
   [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
