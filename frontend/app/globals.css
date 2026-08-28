@@ -254,7 +254,7 @@ img { display: block; }
   .mobile-status { height: 30px; display: flex; align-items: flex-start; justify-content: space-between; padding: 0 21px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; }
   .status-icons { letter-spacing: 1px; font-size: 12px; }
   .mobile-address { height: 40px; border-radius: 30px; background: #5e6268; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-  .mobile-header { display: flex; position: fixed; z-index: 29; top: 105px; left: 0; right: 0; padding: 12px 10px; flex-direction: column; gap: 12px; background: rgba(255,255,255,.02); backdrop-filter: blur(4px); }
+  .mobile-header { display: flex; position: fixed; z-index: 29; top: 0; left: 0; right: 0; padding: 12px 10px; flex-direction: column; gap: 12px; background: rgba(255,255,255,.02); backdrop-filter: blur(4px); }
   .mobile-nav { height: 56px; border-radius: 16px; background: white; display: flex; align-items: center; justify-content: space-between; padding: 0 16px 0 12px; }
   .mobile-brand, .mobile-actions { display: flex; align-items: center; }
   .mobile-brand { gap: 8px; font-size: 20px; letter-spacing: -.05em; }
@@ -267,7 +267,7 @@ img { display: block; }
   .segmented button { border-radius: 64px; background: transparent; color: rgba(94,94,94,.8); font-size: 16px; }
   .segmented button.active { background: #303030; color: white; border: 1px solid #7b7b7b; box-shadow: 0 4px 4px rgba(0,0,0,.25), 0 12px 24px rgba(0,0,0,.18); }
 
-  .upload-screen { min-height: 100dvh; padding: 186px 10px 30px; overflow: visible; }
+  .upload-screen { min-height: 100dvh; padding: 81px 10px 30px; overflow: visible; }
   .upload-content { min-height: auto; justify-content: flex-start; gap: 12px; }
   .upload-heading { order: 0; padding-top: 20px; }
   .upload-heading h1 { font-size: 24px; width: 340px; }
@@ -297,11 +297,11 @@ img { display: block; }
   .glow-a { width: 420px; left: -50px; bottom: 0; }
 
   .stage-loading .mobile-header { padding-bottom: 12px; }
-  .loading-screen { min-height: 100dvh; padding: 186px 9px 43px; }
+  .loading-screen { min-height: 100dvh; padding: 81px 9px 43px; }
   .loading-card { min-height: calc(100dvh - 229px); border-radius: 24px; }
 
   .stage-mapping .mobile-header { padding-bottom: 12px; }
-  .mapping-screen { min-height: 100dvh; padding: 251px 10px 18px; display: block; }
+  .mapping-screen { min-height: 100dvh; padding: 146px 10px 18px; display: block; }
   .mapping-column { display: none; }
   .mapping-column.mobile-active { display: block; }
   .questions-panel { border-radius: 20px; padding: 16px 8px 8px; }
