@@ -44,18 +44,6 @@ const questions: Question[] = [
 
 const assetIcon = (name: string, alt = "") => <img className="asset-icon" src={`${A}${name}`} alt={alt} />;
 
-function MobileChrome() {
-  return (
-    <div className="mobile-chrome" aria-hidden="true">
-      <div className="mobile-status">
-        <b>9:41</b>
-        <span className="status-icons">▮▮▮ ))) ▱</span>
-      </div>
-      <div className="mobile-address"><span>▣</span> web-to-figma.design <span>⇧</span></div>
-    </div>
-  );
-}
-
 function MobileHeader({ pane, setPane, mapping }: { pane: MobilePane; setPane: (pane: MobilePane) => void; mapping: boolean }) {
   return (
     <div className={`mobile-header ${mapping ? "with-tabs" : ""}`}>
@@ -437,7 +425,7 @@ export default function App() {
 
   return (
     <div className={`app stage-${stage} ${compact ? "compact-shell" : "expanded-shell"}`}>
-      <MobileChrome />
+
       <MobileHeader pane={pane} setPane={setPane} mapping={stage === "mapping"} />
       <Sidebar compact={compact} />
       <Topbar compact={compact} />
