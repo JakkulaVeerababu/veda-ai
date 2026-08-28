@@ -24,13 +24,17 @@ export default function ClassroomPage() {
   useEffect(() => {
     import("@/lib/api").then(({ API_BASE_URL }) => {
       fetch(`${API_BASE_URL}/api/classroom/students`)
-        .then(res => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed");
+          return res.json();
+        })
         .then(data => {
-          setStudents(data.students);
+          setStudents(data.students || []);
           setLoading(false);
         })
         .catch(err => {
           console.error(err);
+          setStudents([]);
           setLoading(false);
         });
     });

@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Pycache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Temporary files
+tmp/
+*.log

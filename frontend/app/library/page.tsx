@@ -27,9 +27,12 @@ export default function LibraryPage() {
   useEffect(() => {
     import("@/lib/api").then(({ API_BASE_URL }) => {
       fetch(`${API_BASE_URL}/api/library/`)
-        .then(res => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed");
+          return res.json();
+        })
         .then(json => {
-          setData(json);
+          setData(json || { documents: [] });
           setLoading(false);
         })
         .catch(err => {

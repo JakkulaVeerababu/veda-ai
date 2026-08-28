@@ -31,9 +31,12 @@ export default function AssignmentsPage() {
   useEffect(() => {
     import("@/lib/api").then(({ API_BASE_URL }) => {
       fetch(`${API_BASE_URL}/api/assignments/`)
-        .then(res => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed");
+          return res.json();
+        })
         .then(json => {
-          setData(json);
+          setData(json || { active: [], graded: [] });
           setLoading(false);
         })
         .catch(err => {

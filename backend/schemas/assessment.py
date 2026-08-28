@@ -78,5 +78,5 @@ class ProcessingStatus(BaseModel):
     stage: str = ""
     progress: int = Field(0, ge=0, le=100)
     message: str = ""
-    result: Optional[ProcessingResponse] = None
+    result: Optional[dict] = None
     error: Optional[str] = None

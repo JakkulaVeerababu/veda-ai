@@ -42,8 +42,17 @@ export default function HomeDashboard() {
   useEffect(() => {
     import("@/lib/api").then(({ API_BASE_URL }) => {
       fetch(`${API_BASE_URL}/api/dashboard/`)
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+          return res.json();
+        })
         .then((json) => {
+          // If the backend returns an empty object or error object without stats, use fallback
+          if (!json || !json.stats) {
+            throw new Error('Invalid dashboard data structure');
+          }
           setData(json);
           setLoading(false);
         })
